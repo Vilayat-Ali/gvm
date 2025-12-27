@@ -9,8 +9,8 @@ import (
 
 // Version metadata for remote versions for download
 type RemoteVersion struct {
-	Version      string
-	DownloadLink string
+	Version      string `json:"version"`
+	DownloadLink string `json:"download_link"`
 }
 
 // Golang release url
