@@ -1,0 +1,78 @@
+name: Go CI - Lint & Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  PRIMARY_GO_VERSION: '1.25'
+
+jobs:
+  test:
+    name: Test (Go ${{ matrix.go-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.25']
+    
+    steps:
+      - name: Checkout code
+        # Correct version tag
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        # Correct version tag. Caching is enabled by default[citation:2]
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          # 'cache: true' is the default[citation:2]
+          cache: true
+
+      - name: Run tests
+        run: make test
+
+      - name: Run tests with coverage (Optional)
+        run: make test-coverage
+
+  lint-and-quality:
+    name: Lint & Code Quality
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.PRIMARY_GO_VERSION }}
+
+      - name: Check formatting (gofmt)
+        run: |
+          make fmt
+          # Check if any files were changed
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "❌ Some Go files are not formatted. Please run 'make fmt'."
+            git diff
+            exit 1
+          fi
+
+      - name: Run linter
+        run: make lint
+
+      - name: Run go vet
+        run: make vet
+
+      - name: Check go module tidiness
+        run: |
+          make deps
+          # Fail if go.mod or go.sum changed after 'go mod tidy'
+          git diff --exit-code go.mod go.sum || (echo "❌ go.mod/go.sum are out of sync. Run 'make deps'." && exit 1)
+
+      - name: Build (smoke test)
+        run: |
+          make build
+          ./bin/gvm --help
