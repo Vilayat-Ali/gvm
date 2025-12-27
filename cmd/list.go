@@ -23,8 +23,11 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/vilayat-ali/gvm/internal"
 )
 
 // listCmd represents the list command
@@ -40,7 +43,34 @@ are set as the system default.`,
 		showRemote, _ := cmd.Flags().GetBool("remote")
 
 		if showRemote {
-			fmt.Println("Show remote")
+			versions, err := internal.FetchGoVersionsFromGoGithubRelease()
+			if err != nil {
+				fmt.Printf("Error: %s", err.Error())
+				os.Exit(1)
+			}
+
+			currentVersion, err := internal.GetCurrentGolangVersion()
+			if err != nil {
+				fmt.Printf("Error: %s", err.Error())
+				os.Exit(1)
+			}
+
+			ltsFound := false
+
+			for _, remoteVersion := range versions {
+				version_print_stmt := remoteVersion.Version
+
+				if !ltsFound && !strings.Contains(remoteVersion.Version, "rc") {
+					version_print_stmt += " [LTS] "
+					ltsFound = true
+				}
+
+				if remoteVersion.Version == *currentVersion {
+					version_print_stmt += " (current)"
+				}
+
+				fmt.Println(version_print_stmt)
+			}
 		}
 	},
 }
