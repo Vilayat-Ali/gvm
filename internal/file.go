@@ -9,14 +9,11 @@ import (
 
 // CreateSystemDirectory attempts to create directory in /usr/local/
 // with fallback to user directory if permission denied
-func CreateSystemDirectory(dirName string) (string, error) {
+func CreateSystemDirectory(dirName string) error {
 	systemPath := filepath.Join("/usr/local", dirName)
 
 	// Try to create with current user permissions
 	err := os.MkdirAll(systemPath, 0755)
-	if err == nil {
-		return systemPath, nil
-	}
 
 	// If permission denied, try sudo
 	if os.IsPermission(err) {
@@ -37,28 +34,30 @@ func CreateSystemDirectory(dirName string) (string, error) {
 		}
 		if user != "" {
 			cmd = exec.Command("sudo", "chown", "-R", user+":"+user, systemPath)
-			cmd.Run() // Ignore error, not critical
+			if err := cmd.Run(); err != nil {
+				return err
+			}
 		}
 
-		return systemPath, nil
+		return nil
 	}
 
 	// Other error
-	return "", fmt.Errorf("failed to create %s: %w", systemPath, err)
+	return fmt.Errorf("failed to create %s: %w", systemPath, err)
 }
 
 // CreateUserDirectory creates directory in user's home
-func CreateUserDirectory(dirName string) (string, error) {
+func CreateUserDirectory(dirName string) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %w", err)
+		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
 	userPath := filepath.Join(homeDir, ".local", dirName)
 	if err := os.MkdirAll(userPath, 0755); err != nil {
-		return "", fmt.Errorf("failed to create %s: %w", userPath, err)
+		return fmt.Errorf("failed to create %s: %w", userPath, err)
 	}
 
 	fmt.Printf("Using user directory: %s\n", userPath)
-	return userPath, nil
+	return nil
 }

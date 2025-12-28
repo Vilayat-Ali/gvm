@@ -35,7 +35,7 @@ type Config struct {
 // Creates an instance of config and setup required directories and files
 func SetupConfig() error {
 	// Create directory /usr/local/gvm for local go version download
-	_, err := CreateUserDirectory(CONFIG_FILE_GO_DOWNLOAD_PATH)
+	err := CreateUserDirectory(CONFIG_FILE_GO_DOWNLOAD_PATH)
 	if err != nil {
 		return err
 	}
