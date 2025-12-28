@@ -5,137 +5,208 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"time"
 )
 
-var (
-	version = "v1.0.0"
+const (
+	AppVersion    = "v1.0.0"
+	AppName       = "gvm"
+	ConfigDirName = "gvm"
+	ConfigFile    = "config.json"
+	GoVersionsDir = "go-versions"
 )
 
-const CONFIG_FILE_NAME string = "config.json"
-const CONFIG_FILE_PATH string = "~/.config/gvm"
-const CONFIG_FILE_GO_DOWNLOAD_PATH string = "/usr/local/gvm"
-
-// Represents the layout of gvm config file
 type Config struct {
-	// version of gvm cli
-	Version string `json:"version"`
-	// configured path to store downloaded golang version artifacts
-	DownloadPath string `json:"download_path"`
-	// last time when list of available versions was fetched from official github
-	// in millis unix time format
-	LastRemoteFetch int64 `json:"last_remote_fetch"`
-	// Ordered list of remote versions available for download
-	AvailableVersions []RemoteVersion `json:"available_versions"`
-	// version of golang downloaded and available to use and switch in local
+	Version            string                     `json:"version"`
+	DownloadPath       string                     `json:"download_path"`
+	LastRemoteFetch    int64                      `json:"last_remote_fetch"`
+	AvailableVersions  []RemoteVersion            `json:"available_versions"`
 	DownloadedVersions map[string]DownloadVersion `json:"downloaded_versions"`
 }
 
-// Creates an instance of config and setup required directories and files
-func SetupConfig() error {
-	// Create directory /usr/local/gvm for local go version download
-	err := CreateUserDirectory(CONFIG_FILE_GO_DOWNLOAD_PATH)
+// Path management functions
+func ConfigDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+	return filepath.Join(home, ".config", ConfigDirName), nil
+}
+
+func ConfigFilePath() (string, error) {
+	configDir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(configDir, ConfigFile), nil
+}
+
+func GoDownloadDir() (string, error) {
+	// Try system location first
+	systemPath := filepath.Join("/usr/local", AppName, GoVersionsDir)
+	if err := os.MkdirAll(systemPath, 0755); err == nil {
+		return systemPath, nil
+	}
+
+	// Fall back to user directory
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+	return filepath.Join(home, ".local", AppName, GoVersionsDir), nil
+}
+
+// Setup functions
+func ensureDirectories() error {
+	// Create config directory
+	configDir, err := ConfigDir()
 	if err != nil {
 		return err
 	}
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
 
-	// Create directory ~/.config/gvm for local go version download
-	path := filepath.Join(CONFIG_FILE_PATH)
-	if err := os.MkdirAll(path, 0755); err != nil {
+	// Create go versions directory
+	goDir, err := GoDownloadDir()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(goDir, 0755); err != nil {
+		return fmt.Errorf("failed to create go versions directory: %w", err)
+	}
+
+	return nil
+}
+
+func SetupConfig() error {
+	if err := ensureDirectories(); err != nil {
 		return err
 	}
 
-	// Fetch remote versions
 	remoteVersions, err := FetchGoVersionsFromGoGithubRelease()
+	if err != nil {
+		return fmt.Errorf("failed to fetch remote versions: %w", err)
+	}
+
+	goDir, err := GoDownloadDir()
 	if err != nil {
 		return err
 	}
 
 	config := &Config{
-		Version:            version,
-		DownloadPath:       CONFIG_FILE_GO_DOWNLOAD_PATH,
+		Version:            AppVersion,
+		DownloadPath:       goDir,
 		LastRemoteFetch:    time.Now().UnixMilli(),
 		AvailableVersions:  remoteVersions,
 		DownloadedVersions: make(map[string]DownloadVersion),
 	}
 
-	if err := config.SaveConfig(); err != nil {
-		return err
-	}
-
-	return nil
+	return config.Save()
 }
 
-// Fetches config from config file. Throws error if not found
-func GetConfigOrThrow() (*Config, error) {
-	file, err := os.ReadFile(fmt.Sprintf("%s%s", CONFIG_FILE_PATH, CONFIG_FILE_NAME))
+// Config file operations
+func ConfigExists() bool {
+	configPath, err := ConfigFilePath()
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(configPath)
+	return err == nil
+}
+
+func LoadConfig() (*Config, error) {
+	configPath, err := ConfigFilePath()
 	if err != nil {
 		return nil, err
 	}
 
-	var config Config
+	file, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
 
+	var config Config
 	if err := json.Unmarshal(file, &config); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
 	return &config, nil
 }
 
-// Marks an available version as download in the config file
-func (c *Config) MarkAvailableVersionAsDownload(idx uint, binaryPath string) error {
-	availableVersion := c.AvailableVersions[idx]
-
-	if _, ok := c.DownloadedVersions[availableVersion.Version]; ok {
-		return nil
-	}
-
-	downloadEntry := DownloadVersion{
-		Version: availableVersion.Version,
-		BinPath: binaryPath,
-	}
-
-	c.DownloadedVersions[availableVersion.Version] = downloadEntry
-	return nil
-}
-
-// Fetches latest releases and diffs with local changes and then writes the latest ones
-func (c *Config) UpdateAvailableVersions() error {
-	newlyFetchedVersions, err := FetchGoVersionsFromGoGithubRelease()
+func (c *Config) Save() error {
+	configPath, err := ConfigFilePath()
 	if err != nil {
 		return err
 	}
 
-	var latestVersions []RemoteVersion = make([]RemoteVersion, 10)
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
 
-	for idx := range 10 {
-		if !slices.Contains(c.AvailableVersions, newlyFetchedVersions[idx]) {
-			latestVersions = append(latestVersions, newlyFetchedVersions[idx])
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
+}
+
+// Config operations
+func (c *Config) MarkVersionAsDownloaded(idx uint, binaryPath string) error {
+	if int(idx) >= len(c.AvailableVersions) {
+		return fmt.Errorf("invalid version index: %d", idx)
+	}
+
+	version := c.AvailableVersions[idx]
+	if _, exists := c.DownloadedVersions[version.Version]; exists {
+		return nil // Already downloaded
+	}
+
+	c.DownloadedVersions[version.Version] = DownloadVersion{
+		Version: version.Version,
+		BinPath: binaryPath,
+	}
+
+	return nil
+}
+
+func (c *Config) UpdateAvailableVersions() error {
+	newVersions, err := FetchGoVersionsFromGoGithubRelease()
+	if err != nil {
+		return fmt.Errorf("failed to fetch new versions: %w", err)
+	}
+
+	// Keep only top 10 versions
+	limit := 10
+	if len(newVersions) > limit {
+		newVersions = newVersions[:limit]
+	}
+
+	// Create a set of existing versions for quick lookup
+	existingSet := make(map[string]bool)
+	for _, v := range c.AvailableVersions {
+		existingSet[v.Version] = true
+	}
+
+	// Add only new versions
+	var latestVersions []RemoteVersion
+	for _, v := range newVersions {
+		if !existingSet[v.Version] {
+			latestVersions = append(latestVersions, v)
 		}
 	}
 
-	newVersionCount := len(latestVersions)
-
-	for idx := range 10 - newVersionCount {
-		latestVersions = append(latestVersions, c.AvailableVersions[idx])
+	// Add existing versions to fill up to limit
+	for _, v := range c.AvailableVersions {
+		if len(latestVersions) >= limit {
+			break
+		}
+		latestVersions = append(latestVersions, v)
 	}
 
 	c.LastRemoteFetch = time.Now().UnixMilli()
 	c.AvailableVersions = latestVersions
-	return nil
-}
 
-// Writes changes to config object to the config file at configFilePath
-func (c *Config) SaveConfig() error {
-	configContentJson, err := json.MarshalIndent(c, "", "	")
-	if err != nil {
-		return err
-	}
-
-	if err := os.WriteFile(fmt.Sprintf("%s/%s", CONFIG_FILE_PATH, CONFIG_FILE_NAME), configContentJson, 0644); err != nil {
-		return err
-	}
-
-	return nil
+	return c.Save()
 }

@@ -222,6 +222,11 @@ dev:
 		$$(go env GOPATH)/bin/air; \
 	fi
 
+# Remove cli config setup
+clean-setup: clean
+	rm -rf ~/.config/gvm
+	rm -rf /usr/local/gvm
+
 # Show help
 help:
 	@echo "GVM - Go Version Manager Makefile"

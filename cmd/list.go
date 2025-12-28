@@ -26,6 +26,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/vilayat-ali/gvm/internal"
 )
@@ -41,9 +42,11 @@ highlighting the currently active version and indicating which versions
 are set as the system default.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		showRemote, _ := cmd.Flags().GetBool("remote")
+		showDownloaded, _ := cmd.Flags().GetBool("downloaded")
+		showCurrent, _ := cmd.Flags().GetBool("current")
 
 		if showRemote {
-			versions, err := internal.FetchGoVersionsFromGoGithubRelease()
+			config, err := internal.LoadConfig()
 			if err != nil {
 				fmt.Printf("Error: %s", err.Error())
 				os.Exit(1)
@@ -57,31 +60,114 @@ are set as the system default.`,
 
 			ltsFound := false
 
-			for _, remoteVersion := range versions {
+			for _, remoteVersion := range config.AvailableVersions {
 				version_print_stmt := remoteVersion.Version
 
-				if !ltsFound && !strings.Contains(remoteVersion.Version, "rc") {
+				isReleaseCandidate := strings.Contains(remoteVersion.Version, "rc")
+				isCurrentVersion := remoteVersion.Version == *currentVersion
+
+				if !ltsFound && !isReleaseCandidate {
 					version_print_stmt += " [LTS] "
 					ltsFound = true
 				}
 
-				if remoteVersion.Version == *currentVersion {
+				if isCurrentVersion {
 					version_print_stmt += " (current)"
 				}
 
-				fmt.Println(version_print_stmt)
+				if strings.Contains(version_print_stmt, "[LTS]") || isCurrentVersion {
+					color.Green(version_print_stmt)
+				} else if isReleaseCandidate {
+					color.Red(version_print_stmt)
+				} else {
+					color.Magenta(version_print_stmt)
+				}
 			}
+		}
+
+		if showDownloaded {
+			config, err := internal.LoadConfig()
+			if err != nil {
+				fmt.Printf("Error: %s", err.Error())
+				os.Exit(1)
+			}
+
+			currentVersion, err := internal.GetCurrentGolangVersion()
+			if err != nil {
+				fmt.Printf("Error: %s", err.Error())
+				os.Exit(1)
+			}
+
+			ltsFound := false
+
+			for version := range config.DownloadedVersions {
+				version_print_stmt := version
+
+				isReleaseCandidate := strings.Contains(version, "rc")
+				isCurrentVersion := version == *currentVersion
+
+				if !ltsFound && !isReleaseCandidate {
+					version_print_stmt += " [LTS] "
+					ltsFound = true
+				}
+
+				if isCurrentVersion {
+					version_print_stmt += " (current)"
+				}
+
+				if strings.Contains(version_print_stmt, "[LTS]") || isCurrentVersion {
+					color.Green(version_print_stmt)
+				} else if isReleaseCandidate {
+					color.Red(version_print_stmt)
+				} else {
+					color.Magenta(version_print_stmt)
+				}
+			}
+		}
+
+		if showCurrent {
+			currentVersion, err := internal.GetCurrentGolangVersion()
+			if err != nil {
+				fmt.Printf("Error: %s", err.Error())
+				os.Exit(1)
+			}
+
+			fmt.Println(currentVersion)
+		}
+	},
+}
+
+var updateListCmd = &cobra.Command{
+	Use:   "update",
+	Short: "Updates available Go versions list",
+	Long: `Updates all Go versions currently enlisted on your system for download.
+
+This command updates the available list of all Go versions that can be downloaded`,
+	Run: func(cmd *cobra.Command, args []string) {
+		config, err := internal.LoadConfig()
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		if err := config.UpdateAvailableVersions(); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		if err := config.Save(); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
 		}
 	},
 }
 
 func init() {
+	listCmd.AddCommand(updateListCmd)
 	rootCmd.AddCommand(listCmd)
 
 	// Define flags for the list command
-	listCmd.Flags().BoolP("all", "a", false, "Show all versions (installed + available)")
 	listCmd.Flags().BoolP("remote", "r", false, "Show remote available versions")
-	listCmd.Flags().BoolP("installed", "i", true, "Show installed versions only")
+	listCmd.Flags().BoolP("downloaded", "d", true, "Show downloaded versions only")
 	listCmd.Flags().BoolP("current", "c", false, "Show current active version only")
-	listCmd.Flags().BoolP("verbose", "v", false, "Verbose output with additional details")
 }
