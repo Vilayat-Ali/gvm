@@ -2,11 +2,20 @@ package internal
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"time"
 )
+
+var (
+	version = "v1.0.0"
+)
+
+const CONFIG_FILE_NAME string = "config.json"
+const CONFIG_FILE_PATH string = "~/.config/gvm"
+const CONFIG_FILE_GO_DOWNLOAD_PATH string = "/usr/local/gvm"
 
 // Represents the layout of gvm config file
 type Config struct {
@@ -23,10 +32,45 @@ type Config struct {
 	DownloadedVersions map[string]DownloadVersion `json:"downloaded_versions"`
 }
 
+// Creates an instance of config and setup required directories and files
+func SetupConfig() error {
+	// Create directory /usr/local/gvm for local go version download
+	_, err := CreateUserDirectory(CONFIG_FILE_GO_DOWNLOAD_PATH)
+	if err != nil {
+		return err
+	}
+
+	// Create directory ~/.config/gvm for local go version download
+	path := filepath.Join(CONFIG_FILE_PATH)
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return err
+	}
+
+	// Fetch remote versions
+	remoteVersions, err := FetchGoVersionsFromGoGithubRelease()
+	if err != nil {
+		return err
+	}
+
+	config := &Config{
+		Version:            version,
+		DownloadPath:       CONFIG_FILE_GO_DOWNLOAD_PATH,
+		LastRemoteFetch:    time.Now().UnixMilli(),
+		AvailableVersions:  remoteVersions,
+		DownloadedVersions: make(map[string]DownloadVersion),
+	}
+
+	if err := config.SaveConfig(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Fetches config from config file. Throws error if not found
-func GetConfigOrThrow(configFilePath string) (*Config, error) {
-	file, err := os.ReadFile(configFilePath)
-	if err != nil && errors.Is(err, os.ErrNotExist) {
+func GetConfigOrThrow() (*Config, error) {
+	file, err := os.ReadFile(fmt.Sprintf("%s%s", CONFIG_FILE_PATH, CONFIG_FILE_NAME))
+	if err != nil {
 		return nil, err
 	}
 
@@ -83,13 +127,13 @@ func (c *Config) UpdateAvailableVersions() error {
 }
 
 // Writes changes to config object to the config file at configFilePath
-func (c *Config) SaveConfig(configFilePath string) error {
+func (c *Config) SaveConfig() error {
 	configContentJson, err := json.MarshalIndent(c, "", "	")
 	if err != nil {
 		return err
 	}
 
-	if err := os.WriteFile(configFilePath, configContentJson, 0655); err != nil {
+	if err := os.WriteFile(fmt.Sprintf("%s/%s", CONFIG_FILE_PATH, CONFIG_FILE_NAME), configContentJson, 0644); err != nil {
 		return err
 	}
 

@@ -18,13 +18,13 @@ CGO_ENABLED ?= 0
 # Build flags - Update these if your version variables are in main package, not cmd
 LDFLAGS := -s -w
 ifneq ($(VERSION),)
-	LDFLAGS += -X github.com/vilayat-ali/gvm/cmd.version=$(VERSION)
+	LDFLAGS += -X github.com/vilayat-ali/gvm/internal.version=$(VERSION)
 endif
 ifneq ($(GIT_COMMIT),)
-	LDFLAGS += -X github.com/vilayat-ali/gvm/cmd.commit=$(GIT_COMMIT)
+	LDFLAGS += -X github.com/vilayat-ali/gvm/internal.commit=$(GIT_COMMIT)
 endif
 ifneq ($(BUILD_TIME),)
-	LDFLAGS += -X github.com/vilayat-ali/gvm/cmd.buildTime=$(BUILD_TIME)
+	LDFLAGS += -X github.com/vilayat-ali/gvm/internal.buildTime=$(BUILD_TIME)
 endif
 
 # Directories
