@@ -23,8 +23,14 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"strings"
+	"time"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"github.com/vilayat-ali/gvm/internal"
 )
 
 // downloadCmd represents the download command
@@ -38,11 +44,97 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("download called")
+		config, err := internal.LoadConfig()
+		if err != nil {
+			color.Red(err.Error())
+			os.Exit(1)
+		}
+
+		requestedVersion, err := cmd.Flags().GetString("version")
+		if err != nil {
+			color.Red(err.Error())
+			os.Exit(1)
+		}
+
+		var remoteVersion *internal.RemoteVersion
+		var remoteVersionIdx int = -1
+
+		for idx, rv := range config.AvailableVersions {
+			if rv.Version == strings.TrimSpace(requestedVersion) {
+				remoteVersion = &rv
+				remoteVersionIdx = idx
+			}
+		}
+
+		if remoteVersion == nil || remoteVersionIdx == -1 {
+			color.Red(fmt.Sprintf("Download Error: Failed to download '%s'. Couldn't find in config available versions", requestedVersion))
+			os.Exit(1)
+		}
+
+		color.Green(fmt.Sprintf("Downloading %s\n", requestedVersion))
+		path, err := remoteVersion.Download(PrintProgress())
+		if err != nil {
+			color.Red(err.Error())
+			os.Exit(1)
+		}
+
+		if err := config.MarkVersionAsDownloaded(uint(remoteVersionIdx), *path); err != nil {
+			color.Red(err.Error())
+			os.Exit(1)
+		}
 	},
 }
 
+func PrintProgress() internal.ProgressFunc {
+	start := time.Now()
+	last := time.Now()
+
+	return func(downloaded, total int64) {
+		if time.Since(last) < 200*time.Millisecond {
+			return
+		}
+		last = time.Now()
+
+		elapsed := time.Since(start).Seconds()
+		speed := float64(downloaded) / elapsed / 1024 / 1024
+
+		if total > 0 {
+			percent := float64(downloaded) / float64(total) * 100
+			color.Green(fmt.Sprintf(
+				"\r%.2f%% | %.2f / %.2f MB | %.2f MB/s",
+				percent,
+				float64(downloaded)/1024/1024,
+				float64(total)/1024/1024,
+				speed,
+			))
+		} else {
+			color.Green(fmt.Sprintf(
+				"\rDownloaded %.2f MB | %.2f MB/s",
+				float64(downloaded)/1024/1024,
+				speed,
+			))
+		}
+	}
+}
+
 func init() {
+	config, err := internal.LoadConfig()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	ltsVersion, err := config.GetLTSVersion()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	downloadCmd.Flags().AddFlag(&pflag.Flag{
+		Name:      "version",
+		Shorthand: "g",
+		Usage:     "gvm download --version 1.25.5",
+		DefValue:  *ltsVersion,
+	})
 	rootCmd.AddCommand(downloadCmd)
 
 	// Here you will define your flags and configuration settings.

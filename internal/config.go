@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -132,6 +133,16 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+func (c *Config) GetLTSVersion() (*string, error) {
+	for _, remote := range c.AvailableVersions {
+		if !strings.Contains(remote.Version, "rc") {
+			return &remote.Version, nil
+		}
+	}
+
+	return nil, fmt.Errorf("Config Error: failed to fetch lts from config")
 }
 
 func (c *Config) Save() error {

@@ -2,7 +2,10 @@ package internal
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -11,6 +14,64 @@ import (
 type RemoteVersion struct {
 	Version      string `json:"version"`
 	DownloadLink string `json:"download_link"`
+}
+
+type ProgressFunc func(downloaded int64, total int64)
+
+func (rv *RemoteVersion) Download(
+	progressFn ProgressFunc,
+) (*string, error) {
+	resp, err := http.Get(rv.DownloadLink)
+	if err != nil {
+		return nil, fmt.Errorf("download error (%s): %w", rv.Version, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download failed (%s): %s", rv.Version, resp.Status)
+	}
+
+	downloadDirPath, err := GoDownloadDir()
+	if err != nil {
+		return nil, err
+	}
+
+	filePath := filepath.Join(downloadDirPath, fmt.Sprintf("%s.tar.gz", rv.Version))
+
+	out, err := os.Create(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer out.Close()
+
+	totalSize := resp.ContentLength
+	var downloaded int64
+
+	buffer := make([]byte, 32*1024)
+
+	for {
+		n, err := resp.Body.Read(buffer)
+		if n > 0 {
+			if _, wErr := out.Write(buffer[:n]); wErr != nil {
+				return nil, wErr
+			}
+
+			downloaded += int64(n)
+
+			if progressFn != nil {
+				progressFn(downloaded, totalSize)
+			}
+		}
+
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &filePath, nil
 }
 
 // Golang release url
@@ -50,7 +111,7 @@ func FetchGoVersionsFromGoGithubRelease() ([]RemoteVersion, error) {
 			return nil, fmt.Errorf("failed to parse selection for version name from github. Diff UI")
 		}
 
-		version_download_link := release_row.Find("a[href*='/golang/go/archive']")
+		version_download_link := release_row.Find("a[href*='.tar.gz']")
 		if version_download_link == nil {
 			return nil, fmt.Errorf("failed to parse selection for version download link from github. Diff UI")
 		}
