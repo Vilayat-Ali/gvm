@@ -25,24 +25,27 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"github.com/vilayat-ali/gvm/internal"
 )
 
 // downloadCmd represents the download command
 var downloadCmd = &cobra.Command{
 	Use:   "download",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Download a Go version",
+	Long: `Download a specific version of Go.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+Examples:
+  gvm download --version 1.25.5
+  gvm download -g 1.25.5`,
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		if !internal.ConfigExists() {
+			return fmt.Errorf("configuration not found. Please run 'gvm configure' first")
+		}
+		return nil
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		config, err := internal.LoadConfig()
 		if err != nil {
@@ -60,7 +63,7 @@ to quickly create a Cobra application.`,
 		var remoteVersionIdx int = -1
 
 		for idx, rv := range config.AvailableVersions {
-			if rv.Version == strings.TrimSpace(requestedVersion) {
+			if strings.Replace(rv.Version, "go", "", 1) == strings.TrimSpace(requestedVersion) {
 				remoteVersion = &rv
 				remoteVersionIdx = idx
 			}
@@ -72,7 +75,7 @@ to quickly create a Cobra application.`,
 		}
 
 		color.Green(fmt.Sprintf("Downloading %s\n", requestedVersion))
-		path, err := remoteVersion.Download(PrintProgress())
+		path, err := remoteVersion.Download()
 		if err != nil {
 			color.Red(err.Error())
 			os.Exit(1)
@@ -82,68 +85,12 @@ to quickly create a Cobra application.`,
 			color.Red(err.Error())
 			os.Exit(1)
 		}
+
+		color.Green(fmt.Sprintf("\nGo version %s was downloaded and saved in %s", remoteVersion.Version, *path))
 	},
 }
 
-func PrintProgress() internal.ProgressFunc {
-	start := time.Now()
-	last := time.Now()
-
-	return func(downloaded, total int64) {
-		if time.Since(last) < 200*time.Millisecond {
-			return
-		}
-		last = time.Now()
-
-		elapsed := time.Since(start).Seconds()
-		speed := float64(downloaded) / elapsed / 1024 / 1024
-
-		if total > 0 {
-			percent := float64(downloaded) / float64(total) * 100
-			color.Green(fmt.Sprintf(
-				"\r%.2f%% | %.2f / %.2f MB | %.2f MB/s",
-				percent,
-				float64(downloaded)/1024/1024,
-				float64(total)/1024/1024,
-				speed,
-			))
-		} else {
-			color.Green(fmt.Sprintf(
-				"\rDownloaded %.2f MB | %.2f MB/s",
-				float64(downloaded)/1024/1024,
-				speed,
-			))
-		}
-	}
-}
-
 func init() {
-	config, err := internal.LoadConfig()
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	ltsVersion, err := config.GetLTSVersion()
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	downloadCmd.Flags().AddFlag(&pflag.Flag{
-		Name:      "version",
-		Shorthand: "g",
-		Usage:     "gvm download --version 1.25.5",
-		DefValue:  *ltsVersion,
-	})
+	downloadCmd.Flags().StringP("version", "g", "", "Go version to download (e.g., 1.25.5)")
 	rootCmd.AddCommand(downloadCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// downloadCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// downloadCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

@@ -22,8 +22,7 @@ THE SOFTWARE.
 package cmd
 
 import (
-	"fmt"
-
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/vilayat-ali/gvm/internal"
 )
@@ -41,7 +40,7 @@ to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if !internal.ConfigExists() {
 			if err := internal.SetupConfig(); err != nil {
-				fmt.Println(err)
+				color.Red(err.Error())
 			}
 		}
 	},

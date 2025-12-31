@@ -41,49 +41,8 @@ This command shows all Go versions that have been installed using GVM,
 highlighting the currently active version and indicating which versions
 are set as the system default.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		showRemote, _ := cmd.Flags().GetBool("remote")
 		showDownloaded, _ := cmd.Flags().GetBool("downloaded")
 		showCurrent, _ := cmd.Flags().GetBool("current")
-
-		if showRemote {
-			config, err := internal.LoadConfig()
-			if err != nil {
-				fmt.Printf("Error: %s", err.Error())
-				os.Exit(1)
-			}
-
-			currentVersion, err := internal.GetCurrentGolangVersion()
-			if err != nil {
-				fmt.Printf("Error: %s", err.Error())
-				os.Exit(1)
-			}
-
-			ltsFound := false
-
-			for _, remoteVersion := range config.AvailableVersions {
-				version_print_stmt := remoteVersion.Version
-
-				isReleaseCandidate := strings.Contains(remoteVersion.Version, "rc")
-				isCurrentVersion := remoteVersion.Version == *currentVersion
-
-				if !ltsFound && !isReleaseCandidate {
-					version_print_stmt += " [LTS] "
-					ltsFound = true
-				}
-
-				if isCurrentVersion {
-					version_print_stmt += " (current)"
-				}
-
-				if strings.Contains(version_print_stmt, "[LTS]") || isCurrentVersion {
-					color.Green(version_print_stmt)
-				} else if isReleaseCandidate {
-					color.Red(version_print_stmt)
-				} else {
-					color.Magenta(version_print_stmt)
-				}
-			}
-		}
 
 		if showDownloaded {
 			config, err := internal.LoadConfig()
@@ -123,16 +82,57 @@ are set as the system default.`,
 					color.Magenta(version_print_stmt)
 				}
 			}
+
+			return
 		}
 
 		if showCurrent {
 			currentVersion, err := internal.GetCurrentGolangVersion()
 			if err != nil {
-				fmt.Printf("Error: %s", err.Error())
+				color.Red("Error: %s", err.Error())
 				os.Exit(1)
 			}
 
-			fmt.Println(currentVersion)
+			color.Green(*currentVersion)
+			return
+		}
+
+		config, err := internal.LoadConfig()
+		if err != nil {
+			color.Red("Error: %s", err.Error())
+			os.Exit(1)
+		}
+
+		currentVersion, err := internal.GetCurrentGolangVersion()
+		if err != nil {
+			color.Red("Error: %s", err.Error())
+			os.Exit(1)
+		}
+
+		ltsFound := false
+
+		for _, remoteVersion := range config.AvailableVersions {
+			version_print_stmt := remoteVersion.Version
+
+			isReleaseCandidate := strings.Contains(remoteVersion.Version, "rc")
+			isCurrentVersion := remoteVersion.Version == *currentVersion
+
+			if !ltsFound && !isReleaseCandidate {
+				version_print_stmt += " [LTS] "
+				ltsFound = true
+			}
+
+			if isCurrentVersion {
+				version_print_stmt += " (current)"
+			}
+
+			if strings.Contains(version_print_stmt, "[LTS]") || isCurrentVersion {
+				color.Green(version_print_stmt)
+			} else if isReleaseCandidate {
+				color.Red(version_print_stmt)
+			} else {
+				color.Magenta(version_print_stmt)
+			}
 		}
 	},
 }
@@ -146,17 +146,17 @@ This command updates the available list of all Go versions that can be downloade
 	Run: func(cmd *cobra.Command, args []string) {
 		config, err := internal.LoadConfig()
 		if err != nil {
-			fmt.Println(err)
+			color.Red(err.Error())
 			os.Exit(1)
 		}
 
 		if err := config.UpdateAvailableVersions(); err != nil {
-			fmt.Println(err)
+			color.Red(err.Error())
 			os.Exit(1)
 		}
 
 		if err := config.Save(); err != nil {
-			fmt.Println(err)
+			color.Red(err.Error())
 			os.Exit(1)
 		}
 	},
@@ -167,7 +167,6 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 
 	// Define flags for the list command
-	listCmd.Flags().BoolP("remote", "r", false, "Show remote available versions")
-	listCmd.Flags().BoolP("downloaded", "d", true, "Show downloaded versions only")
+	listCmd.Flags().BoolP("downloaded", "d", false, "Show downloaded versions only")
 	listCmd.Flags().BoolP("current", "c", false, "Show current active version only")
 }

@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/fatih/color"
+
+	progressbar "github.com/schollz/progressbar/v3"
 )
 
 // Version metadata for remote versions for download
@@ -16,11 +19,7 @@ type RemoteVersion struct {
 	DownloadLink string `json:"download_link"`
 }
 
-type ProgressFunc func(downloaded int64, total int64)
-
-func (rv *RemoteVersion) Download(
-	progressFn ProgressFunc,
-) (*string, error) {
+func (rv *RemoteVersion) Download() (*string, error) {
 	resp, err := http.Get(rv.DownloadLink)
 	if err != nil {
 		return nil, fmt.Errorf("download error (%s): %w", rv.Version, err)
@@ -45,30 +44,10 @@ func (rv *RemoteVersion) Download(
 	defer out.Close()
 
 	totalSize := resp.ContentLength
-	var downloaded int64
+	progress := progressbar.DefaultBytes(totalSize, "downloading")
 
-	buffer := make([]byte, 32*1024)
-
-	for {
-		n, err := resp.Body.Read(buffer)
-		if n > 0 {
-			if _, wErr := out.Write(buffer[:n]); wErr != nil {
-				return nil, wErr
-			}
-
-			downloaded += int64(n)
-
-			if progressFn != nil {
-				progressFn(downloaded, totalSize)
-			}
-		}
-
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
+	if _, err := io.Copy(io.MultiWriter(out, progress), resp.Body); err != nil {
+		color.Red(err.Error())
 	}
 
 	return &filePath, nil
