@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -134,6 +135,28 @@ func LoadConfig() (*Config, error) {
 	return &config, nil
 }
 
+func (c *Config) GetDownloadedVersions() *[]DownloadVersion {
+	downloadedVersions := make([]DownloadVersion, 0)
+
+	for _, version := range c.AvailableVersions {
+		if downloadedVersion, ok := c.DownloadedVersions[version.Version]; ok {
+			downloadedVersions = append(downloadedVersions, downloadedVersion)
+		}
+	}
+
+	return &downloadedVersions
+}
+
+func (c *Config) GetLTSVersion() (*string, error) {
+	for _, remote := range c.AvailableVersions {
+		if !strings.Contains(remote.Version, "rc") {
+			return &remote.Version, nil
+		}
+	}
+
+	return nil, fmt.Errorf("Config Error: failed to fetch lts from config")
+}
+
 func (c *Config) Save() error {
 	configPath, err := ConfigFilePath()
 	if err != nil {
@@ -153,19 +176,22 @@ func (c *Config) Save() error {
 }
 
 // Config operations
-func (c *Config) MarkVersionAsDownloaded(idx uint, binaryPath string) error {
-	if int(idx) >= len(c.AvailableVersions) {
-		return fmt.Errorf("invalid version index: %d", idx)
+func (c *Config) MarkVersionAsDownloaded(remoteVersion *RemoteVersion, binaryPath string) error {
+	if remoteVersion == nil {
+		return fmt.Errorf("Invalid Remote Version instance was provided")
 	}
 
-	version := c.AvailableVersions[idx]
-	if _, exists := c.DownloadedVersions[version.Version]; exists {
-		return nil // Already downloaded
+	if _, exists := c.DownloadedVersions[remoteVersion.Version]; exists {
+		return nil
 	}
 
-	c.DownloadedVersions[version.Version] = DownloadVersion{
-		Version: version.Version,
+	c.DownloadedVersions[remoteVersion.Version] = DownloadVersion{
+		Version: remoteVersion.Version,
 		BinPath: binaryPath,
+	}
+
+	if err := c.Save(); err != nil {
+		return err
 	}
 
 	return nil
@@ -207,6 +233,5 @@ func (c *Config) UpdateAvailableVersions() error {
 
 	c.LastRemoteFetch = time.Now().UnixMilli()
 	c.AvailableVersions = latestVersions
-
 	return c.Save()
 }

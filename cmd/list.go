@@ -41,99 +41,160 @@ This command shows all Go versions that have been installed using GVM,
 highlighting the currently active version and indicating which versions
 are set as the system default.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		showRemote, _ := cmd.Flags().GetBool("remote")
 		showDownloaded, _ := cmd.Flags().GetBool("downloaded")
 		showCurrent, _ := cmd.Flags().GetBool("current")
-
-		if showRemote {
-			config, err := internal.LoadConfig()
-			if err != nil {
-				fmt.Printf("Error: %s", err.Error())
-				os.Exit(1)
-			}
-
-			currentVersion, err := internal.GetCurrentGolangVersion()
-			if err != nil {
-				fmt.Printf("Error: %s", err.Error())
-				os.Exit(1)
-			}
-
-			ltsFound := false
-
-			for _, remoteVersion := range config.AvailableVersions {
-				version_print_stmt := remoteVersion.Version
-
-				isReleaseCandidate := strings.Contains(remoteVersion.Version, "rc")
-				isCurrentVersion := remoteVersion.Version == *currentVersion
-
-				if !ltsFound && !isReleaseCandidate {
-					version_print_stmt += " [LTS] "
-					ltsFound = true
-				}
-
-				if isCurrentVersion {
-					version_print_stmt += " (current)"
-				}
-
-				if strings.Contains(version_print_stmt, "[LTS]") || isCurrentVersion {
-					color.Green(version_print_stmt)
-				} else if isReleaseCandidate {
-					color.Red(version_print_stmt)
-				} else {
-					color.Magenta(version_print_stmt)
-				}
-			}
-		}
 
 		if showDownloaded {
 			config, err := internal.LoadConfig()
 			if err != nil {
-				fmt.Printf("Error: %s", err.Error())
+				color.Red("✗ Error loading configuration: %s", err.Error())
 				os.Exit(1)
+			}
+
+			if len(config.DownloadedVersions) == 0 {
+				color.Yellow("📭 No downloaded Go versions found.")
+				color.Cyan("\nTry: gvm list      # to see available versions")
+				color.Cyan("     gvm install   # to install a version")
+				return
 			}
 
 			currentVersion, err := internal.GetCurrentGolangVersion()
 			if err != nil {
-				fmt.Printf("Error: %s", err.Error())
+				color.Red("✗ Error detecting current version: %s", err.Error())
 				os.Exit(1)
 			}
 
+			fmt.Println()
+			color.Cyan("📦 Downloaded Go Versions")
+			fmt.Println(strings.Repeat("─", 50))
+
 			ltsFound := false
 
-			for version := range config.DownloadedVersions {
+			for _, downloadVersion := range *config.GetDownloadedVersions() {
+				version := downloadVersion.Version
 				version_print_stmt := version
 
 				isReleaseCandidate := strings.Contains(version, "rc")
 				isCurrentVersion := version == *currentVersion
 
 				if !ltsFound && !isReleaseCandidate {
-					version_print_stmt += " [LTS] "
+					version_print_stmt += " 🏷️ LTS"
 					ltsFound = true
 				}
 
 				if isCurrentVersion {
-					version_print_stmt += " (current)"
+					version_print_stmt += " ✅"
 				}
 
-				if strings.Contains(version_print_stmt, "[LTS]") || isCurrentVersion {
-					color.Green(version_print_stmt)
+				bullet := "  • "
+				if isCurrentVersion {
+					bullet = "  ▶ "
+				}
+
+				if isCurrentVersion {
+					color.New(color.FgGreen, color.Bold).Printf("%s%s\n", bullet, version_print_stmt)
+				} else if strings.Contains(version_print_stmt, "🏷️ LTS") {
+					color.New(color.FgCyan, color.Bold).Printf("%s%s\n", bullet, version_print_stmt)
 				} else if isReleaseCandidate {
-					color.Red(version_print_stmt)
+					color.New(color.FgYellow).Printf("%s%s\n", bullet, version_print_stmt)
 				} else {
-					color.Magenta(version_print_stmt)
+					color.New(color.FgMagenta).Printf("%s%s\n", bullet, version_print_stmt)
 				}
 			}
+
+			fmt.Println()
+			color.HiBlack("Legend: ✅ = Current | 🏷️ = LTS | • = Installed")
+			return
 		}
 
 		if showCurrent {
 			currentVersion, err := internal.GetCurrentGolangVersion()
 			if err != nil {
-				fmt.Printf("Error: %s", err.Error())
+				color.Red("✗ Error detecting current version: %s", err.Error())
 				os.Exit(1)
 			}
 
-			fmt.Println(currentVersion)
+			fmt.Println()
+			color.Cyan("⚡ Current Go Version")
+			fmt.Println(strings.Repeat("─", 30))
+			color.New(color.FgGreen, color.Bold).Printf("  %s\n", *currentVersion)
+			fmt.Println()
+			return
 		}
+
+		config, err := internal.LoadConfig()
+		if err != nil {
+			color.Red("✗ Error loading configuration: %s", err.Error())
+			os.Exit(1)
+		}
+
+		if len(config.AvailableVersions) == 0 {
+			color.Yellow("📭 No Go versions available in cache.")
+			color.Cyan("\nTry: gvm list update  # to update the versions list")
+			return
+		}
+
+		currentVersion, err := internal.GetCurrentGolangVersion()
+		if err != nil {
+			color.Red("✗ Error detecting current version: %s", err.Error())
+			os.Exit(1)
+		}
+
+		fmt.Println()
+		color.Cyan("📚 Available Go Versions")
+		fmt.Println(strings.Repeat("─", 50))
+
+		ltsFound := false
+		versionCount := 0
+
+		for _, remoteVersion := range config.AvailableVersions {
+			version_print_stmt := remoteVersion.Version
+
+			isReleaseCandidate := strings.Contains(remoteVersion.Version, "rc")
+			isCurrentVersion := remoteVersion.Version == *currentVersion
+
+			if !ltsFound && !isReleaseCandidate {
+				version_print_stmt += " 🏷️ LTS"
+				ltsFound = true
+			}
+
+			if isCurrentVersion {
+				version_print_stmt += " ✅"
+			}
+
+			// Create bullet point with colored text
+			bullet := "  • "
+			if isCurrentVersion {
+				bullet = "  ▶ "
+			}
+
+			if isCurrentVersion {
+				color.New(color.FgGreen, color.Bold).Printf("%s%s\n", bullet, version_print_stmt)
+			} else if strings.Contains(version_print_stmt, "🏷️ LTS") {
+				color.New(color.FgCyan, color.Bold).Printf("%s%s\n", bullet, version_print_stmt)
+			} else if isReleaseCandidate {
+				color.New(color.FgYellow).Printf("%s%s\n", bullet, version_print_stmt)
+			} else {
+				color.New(color.FgMagenta).Printf("%s%s\n", bullet, version_print_stmt)
+			}
+
+			versionCount++
+			if versionCount >= 10 { // Show only first 10 versions
+				if len(config.AvailableVersions) > 10 {
+					color.HiBlack("\n  ... and %d more versions", len(config.AvailableVersions)-10)
+					color.HiBlack("  Use 'gvm list -d' to see downloaded versions")
+				}
+				break
+			}
+		}
+
+		fmt.Println()
+		color.HiBlack("Legend: ✅ = Current | 🏷️ = LTS | ▶ = Active | • = Available")
+		fmt.Println()
+		color.Cyan("💡 Tips:")
+		color.Cyan("  • Use 'gvm list -d' to see downloaded versions")
+		color.Cyan("  • Use 'gvm list -c' to see current version only")
+		color.Cyan("  • Use 'gvm list update' to refresh available versions")
 	},
 }
 
@@ -144,21 +205,32 @@ var updateListCmd = &cobra.Command{
 
 This command updates the available list of all Go versions that can be downloaded`,
 	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println()
+		color.Cyan("🔄 Updating Go versions list...")
+		fmt.Println(strings.Repeat("─", 30))
+
 		config, err := internal.LoadConfig()
 		if err != nil {
-			fmt.Println(err)
+			color.Red("✗ Error loading configuration: %s", err.Error())
 			os.Exit(1)
 		}
 
+		color.Blue("  Fetching latest versions from GitHub...")
 		if err := config.UpdateAvailableVersions(); err != nil {
-			fmt.Println(err)
+			color.Red("✗ Failed to update versions: %s", err.Error())
 			os.Exit(1)
 		}
 
+		color.Blue("  Saving updated list...")
 		if err := config.Save(); err != nil {
-			fmt.Println(err)
+			color.Red("✗ Failed to save configuration: %s", err.Error())
 			os.Exit(1)
 		}
+
+		color.Green("✓ Successfully updated versions list!")
+		color.Cyan("\n📊 Found %d Go versions available for download", len(config.AvailableVersions))
+		color.Cyan("\nRun 'gvm list' to see the updated list")
+		fmt.Println()
 	},
 }
 
@@ -167,7 +239,6 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 
 	// Define flags for the list command
-	listCmd.Flags().BoolP("remote", "r", false, "Show remote available versions")
-	listCmd.Flags().BoolP("downloaded", "d", true, "Show downloaded versions only")
+	listCmd.Flags().BoolP("downloaded", "d", false, "Show downloaded versions only")
 	listCmd.Flags().BoolP("current", "c", false, "Show current active version only")
 }

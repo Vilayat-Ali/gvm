@@ -2,15 +2,55 @@ package internal
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/fatih/color"
+
+	progressbar "github.com/schollz/progressbar/v3"
 )
 
 // Version metadata for remote versions for download
 type RemoteVersion struct {
 	Version      string `json:"version"`
 	DownloadLink string `json:"download_link"`
+}
+
+func (rv *RemoteVersion) Download() (*string, error) {
+	resp, err := http.Get(rv.DownloadLink)
+	if err != nil {
+		return nil, fmt.Errorf("download error (%s): %w", rv.Version, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download failed (%s): %s", rv.Version, resp.Status)
+	}
+
+	downloadDirPath, err := GoDownloadDir()
+	if err != nil {
+		return nil, err
+	}
+
+	filePath := filepath.Join(downloadDirPath, fmt.Sprintf("%s.tar.gz", rv.Version))
+
+	out, err := os.Create(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer out.Close()
+
+	totalSize := resp.ContentLength
+	progress := progressbar.DefaultBytes(totalSize, "downloading")
+
+	if _, err := io.Copy(io.MultiWriter(out, progress), resp.Body); err != nil {
+		color.Red(err.Error())
+	}
+
+	return &filePath, nil
 }
 
 // Golang release url
@@ -50,7 +90,7 @@ func FetchGoVersionsFromGoGithubRelease() ([]RemoteVersion, error) {
 			return nil, fmt.Errorf("failed to parse selection for version name from github. Diff UI")
 		}
 
-		version_download_link := release_row.Find("a[href*='/golang/go/archive']")
+		version_download_link := release_row.Find("a[href*='.tar.gz']")
 		if version_download_link == nil {
 			return nil, fmt.Errorf("failed to parse selection for version download link from github. Diff UI")
 		}
