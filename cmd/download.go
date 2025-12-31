@@ -81,7 +81,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		if err := config.MarkVersionAsDownloaded(uint(remoteVersionIdx), *path); err != nil {
+		if err := config.MarkVersionAsDownloaded(remoteVersion, *path); err != nil {
 			color.Red(err.Error())
 			os.Exit(1)
 		}

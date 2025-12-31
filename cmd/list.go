@@ -70,7 +70,8 @@ are set as the system default.`,
 
 			ltsFound := false
 
-			for version := range config.DownloadedVersions {
+			for _, downloadVersion := range *config.GetDownloadedVersions() {
+				version := downloadVersion.Version
 				version_print_stmt := version
 
 				isReleaseCandidate := strings.Contains(version, "rc")
@@ -85,7 +86,6 @@ are set as the system default.`,
 					version_print_stmt += " ✅"
 				}
 
-				// Create bullet point with colored text
 				bullet := "  • "
 				if isCurrentVersion {
 					bullet = "  ▶ "
