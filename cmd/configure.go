@@ -22,6 +22,8 @@ THE SOFTWARE.
 package cmd
 
 import (
+	"os"
+
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/vilayat-ali/gvm/internal"
@@ -30,18 +32,32 @@ import (
 // configureCmd represents the configure command
 var configureCmd = &cobra.Command{
 	Use:   "configure",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Set up initial configuration for gvm (Go Version Manager)",
+	Long: `The configure command initializes gvm by creating the necessary configuration files and directory structure.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+This command performs the following actions:
+1. Creates a configuration file at ~/.config/gvm/config.json
+2. Sets up the required directories for storing Go versions at /usr/local/gvm/go-versions/
+
+If configuration already exists, this command will inform you that gvm is already set up.
+
+Examples:
+  gvm configure      # Initializes gvm with default settings
+  gvm configure -h   # Shows help information for this command`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if !internal.ConfigExists() {
+			color.Blue("Setting up gvm configuration...")
 			if err := internal.SetupConfig(); err != nil {
-				color.Red(err.Error())
+				color.Red("Failed to configure gvm: %s", err.Error())
+				os.Exit(1)
 			}
+			color.Green("✓ gvm configured successfully!")
+			color.Cyan("\nNext steps:")
+			color.Cyan("  • Run 'gvm list' to see available Go versions")
+			color.Cyan("  • Run 'gvm download <version>' to install a Go version")
+			color.Cyan("  • Run 'gvm use <version>' to switch to a specific Go version")
+		} else {
+			color.Yellow("gvm is already configured. Run 'gvm --help' to see available commands.")
 		}
 	},
 }
