@@ -101,5 +101,6 @@ Examples:
 }
 
 func init() {
+	downloadCmd.Flags().StringP("version", "g", "", "Go version to download (e.g., 1.25.5)")
 	rootCmd.AddCommand(downloadCmd)
 }

@@ -189,6 +189,10 @@ func (c *Config) MarkVersionAsDownloaded(remoteVersion *RemoteVersion, tarballPa
 		return err
 	}
 
+	if err := c.Save(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
