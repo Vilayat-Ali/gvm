@@ -45,13 +45,13 @@ are set as the system default.`,
 		showCurrent, _ := cmd.Flags().GetBool("current")
 
 		if showDownloaded {
-			config, err := internal.LoadConfig()
+			gvmConfig, err := internal.LoadConfig()
 			if err != nil {
 				color.Red("✗ Error loading configuration: %s", err.Error())
 				os.Exit(1)
 			}
 
-			if len(config.DownloadedVersions) == 0 {
+			if len(gvmConfig.DownloadedVersions) == 0 {
 				color.Yellow("📭 No downloaded Go versions found.")
 				color.Cyan("\nTry: gvm list      # to see available versions")
 				color.Cyan("     gvm install   # to install a version")
@@ -70,7 +70,7 @@ are set as the system default.`,
 
 			ltsFound := false
 
-			for _, downloadVersion := range *config.GetDownloadedVersions() {
+			for _, downloadVersion := range *gvmConfig.GetDownloadedVersions() {
 				version := downloadVersion.Version
 				version_print_stmt := version
 

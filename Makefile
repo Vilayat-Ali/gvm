@@ -46,6 +46,8 @@ build:
 		.
 	@chmod +x $(BIN_DIR)/$(APP_NAME)
 	@echo "Build complete: $(BIN_DIR)/$(APP_NAME)"
+	@echo "Granting necessary permissions"
+	make setup-bin-perm
 
 # Quick build and run
 run: build
@@ -222,10 +224,14 @@ dev:
 		$$(go env GOPATH)/bin/air; \
 	fi
 
+setup-bin-perm:
+	sudo chown root:root ./bin/gvm
+	sudo chmod u+s ./bin/gvm
+
 # Remove cli config setup
 clean-setup: clean
-	rm -rf ~/.config/gvm
-	rm -rf /usr/local/gvm
+	sudo rm -rf ~/.config/gvm
+	sudo rm -rf /usr/local/gvm
 
 # Show help
 help:

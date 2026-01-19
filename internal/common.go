@@ -3,6 +3,7 @@ package internal
 import (
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -30,4 +31,10 @@ func ExecShellCommand(cmd string) ([]byte, error) {
 	}
 
 	return out, nil
+}
+
+// Utility function to validate golang versions as strings
+func ValidateGoVersion(version string) bool {
+	re := regexp.MustCompile(`^v?(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)(?:\.(?P<patch>0|[1-9]\d*))?(?:(?P<rc>rc[1-9]\d*))?$`)
+	return re.MatchString(version)
 }

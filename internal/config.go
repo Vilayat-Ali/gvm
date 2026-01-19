@@ -42,19 +42,14 @@ func ConfigFilePath() (string, error) {
 	return filepath.Join(configDir, ConfigFile), nil
 }
 
-func GoDownloadDir() (string, error) {
+func GoDownloadDir() (*string, error) {
 	// Try system location first
 	systemPath := filepath.Join("/usr/local", AppName, GoVersionsDir)
 	if err := os.MkdirAll(systemPath, 0755); err == nil {
-		return systemPath, nil
+		return &systemPath, nil
 	}
 
-	// Fall back to user directory
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %w", err)
-	}
-	return filepath.Join(home, ".local", AppName, GoVersionsDir), nil
+	return nil, fmt.Errorf("Root user permission required. Run again with sudo prefix.")
 }
 
 // Setup functions
@@ -73,7 +68,7 @@ func ensureDirectories() error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(goDir, 0755); err != nil {
+	if err := os.MkdirAll(*goDir, 0755); err != nil {
 		return fmt.Errorf("failed to create go versions directory: %w", err)
 	}
 
@@ -97,7 +92,7 @@ func SetupConfig() error {
 
 	config := &Config{
 		Version:            AppVersion,
-		DownloadPath:       goDir,
+		DownloadPath:       *goDir,
 		LastRemoteFetch:    time.Now().UnixMilli(),
 		AvailableVersions:  remoteVersions,
 		DownloadedVersions: make(map[string]DownloadVersion),
@@ -124,7 +119,7 @@ func LoadConfig() (*Config, error) {
 
 	file, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+		return nil, fmt.Errorf("failed to read config file: %w. Please run `gvm configure` once.", err)
 	}
 
 	var config Config
@@ -176,7 +171,7 @@ func (c *Config) Save() error {
 }
 
 // Config operations
-func (c *Config) MarkVersionAsDownloaded(remoteVersion *RemoteVersion, binaryPath string) error {
+func (c *Config) MarkVersionAsDownloaded(remoteVersion *RemoteVersion, tarballPath string) error {
 	if remoteVersion == nil {
 		return fmt.Errorf("Invalid Remote Version instance was provided")
 	}
@@ -187,7 +182,11 @@ func (c *Config) MarkVersionAsDownloaded(remoteVersion *RemoteVersion, binaryPat
 
 	c.DownloadedVersions[remoteVersion.Version] = DownloadVersion{
 		Version: remoteVersion.Version,
-		BinPath: binaryPath,
+		TarPath: tarballPath,
+	}
+
+	if err := c.Save(); err != nil {
+		return err
 	}
 
 	if err := c.Save(); err != nil {
