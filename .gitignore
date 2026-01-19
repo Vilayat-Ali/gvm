@@ -1,6 +1,7 @@
 # build binaries and artifacts
 bin
 dist
+*.tar.gz
 
 # Binaries for programs and plugins
 *.exe

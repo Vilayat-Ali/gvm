@@ -46,8 +46,6 @@ build:
 		.
 	@chmod +x $(BIN_DIR)/$(APP_NAME)
 	@echo "Build complete: $(BIN_DIR)/$(APP_NAME)"
-	@echo "Granting necessary permissions"
-	make setup-bin-perm
 
 # Quick build and run
 run: build
@@ -269,6 +267,9 @@ help:
 	@echo "  make run                      # Build and run"
 	@echo "  make install                  # Install to system"
 	@echo "  make release                  # Create release packages"
+
+github-release: clean build
+	tar -czvf gvm-linux-x86.tar.gz ./bin 
 
 # Default target
 .DEFAULT_GOAL := help
