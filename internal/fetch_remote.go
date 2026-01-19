@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/fatih/color"
@@ -35,7 +36,7 @@ func (rv *RemoteVersion) Download() (*string, error) {
 		return nil, err
 	}
 
-	filePath := filepath.Join(downloadDirPath, fmt.Sprintf("%s.tar.gz", rv.Version))
+	filePath := filepath.Join(*downloadDirPath, fmt.Sprintf("%s.tar.gz", rv.Version))
 
 	out, err := os.Create(filePath)
 	if err != nil {
@@ -106,9 +107,13 @@ func FetchGoVersionsFromGoGithubRelease() ([]RemoteVersion, error) {
 			return nil, fmt.Errorf("failed to parse values for version or download link from github. Diff UI")
 		}
 
+		scrappedDownloadLinkParts := strings.Split(downloadLink, "/")
+		scrappedFileName := scrappedDownloadLinkParts[len(scrappedDownloadLinkParts)-1]
+		downloadableBinaryName := fmt.Sprintf("%s.linux-amd64.tar.gz", strings.Replace(scrappedFileName, ".tar.gz", "", 1))
+
 		releases[idx] = RemoteVersion{
 			Version:      version,
-			DownloadLink: fmt.Sprintf("https://github.com%s", downloadLink),
+			DownloadLink: fmt.Sprintf("https://go.dev/dl/%s", downloadableBinaryName),
 		}
 	}
 

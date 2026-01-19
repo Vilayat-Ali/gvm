@@ -47,13 +47,23 @@ Examples:
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		config, err := internal.LoadConfig()
+		if len(args) == 0 {
+			color.Red("Arg Error: Expected positional arguement 'golang version'. Example gvm download 1.25.5")
+			os.Exit(1)
+		}
+
+		requestedVersion := args[0]
+		if !internal.ValidateGoVersion(requestedVersion) {
+			color.Red(fmt.Sprintf("Input Error: Version '%s' is not a valid golang version", requestedVersion))
+			os.Exit(1)
+		}
+
+		gvmConfig, err := internal.LoadConfig()
 		if err != nil {
 			color.Red(err.Error())
 			os.Exit(1)
 		}
 
-		requestedVersion, err := cmd.Flags().GetString("version")
 		if err != nil {
 			color.Red(err.Error())
 			os.Exit(1)
@@ -62,7 +72,7 @@ Examples:
 		var remoteVersion *internal.RemoteVersion
 		var remoteVersionIdx int = -1
 
-		for idx, rv := range config.AvailableVersions {
+		for idx, rv := range gvmConfig.AvailableVersions {
 			if strings.Replace(rv.Version, "go", "", 1) == strings.TrimSpace(requestedVersion) {
 				remoteVersion = &rv
 				remoteVersionIdx = idx
@@ -81,7 +91,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		if err := config.MarkVersionAsDownloaded(remoteVersion, *path); err != nil {
+		if err := gvmConfig.MarkVersionAsDownloaded(remoteVersion, *path); err != nil {
 			color.Red(err.Error())
 			os.Exit(1)
 		}
@@ -91,6 +101,5 @@ Examples:
 }
 
 func init() {
-	downloadCmd.Flags().StringP("version", "g", "", "Go version to download (e.g., 1.25.5)")
 	rootCmd.AddCommand(downloadCmd)
 }

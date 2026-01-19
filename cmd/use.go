@@ -23,35 +23,128 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	"github.com/vilayat-ali/gvm/internal"
 )
 
 // useCmd represents the use command
 var useCmd = &cobra.Command{
-	Use:   "use",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Use:   "use <version>",
+	Short: "Select a Go version for use on this machine",
+	Long: `Select a Go toolchain version to be used across the system or in the current shell.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+This command will ensure the requested Go version is installed (if supported),
+configure the environment, and set it as the active Go version.
+
+Examples:
+  mycli use 1.22.2
+  mycli use latest
+  mycli use 1.20`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("use called")
+		if len(args) == 0 {
+			color.Red("Arg Error: Expected positional arguement 'golang version'. Example gvm download 1.25.5")
+			os.Exit(1)
+		}
+
+		requestedVersion := args[0]
+		if !internal.ValidateGoVersion(requestedVersion) {
+			color.Red(fmt.Sprintf("Input Error: Version '%s' is not a valid golang version", requestedVersion))
+			os.Exit(1)
+		}
+
+		gvmConfig, err := internal.LoadConfig()
+		if err != nil {
+			color.Red(err.Error())
+			os.Exit(1)
+		}
+
+		if !internal.ValidateGoVersion(requestedVersion) {
+			color.Red("Input Error: Invalid golang version requested")
+			os.Exit(1)
+		}
+
+		var isAvailable bool = false
+		var requiredDownloadedVersion *internal.DownloadVersion
+
+		for _, downloadedVersion := range gvmConfig.DownloadedVersions {
+			raw_version := strings.Replace(downloadedVersion.Version, "go", "", 1)
+
+			if requestedVersion == raw_version {
+				requiredDownloadedVersion = &downloadedVersion
+				break
+			}
+		}
+
+		for _, availableVersion := range gvmConfig.AvailableVersions {
+			raw_version := strings.Replace(availableVersion.Version, "go", "", 1)
+
+			if requestedVersion == raw_version {
+				isAvailable = true
+				break
+			}
+		}
+
+		if !isAvailable {
+			color.Red("Input Error: Invalid version %s. Version not available for download.", requestedVersion)
+			color.Blue("Run `gvm list update` to update the version list available")
+			os.Exit(1)
+		}
+
+		if !isAvailable && requiredDownloadedVersion == nil {
+			color.Red(fmt.Sprintf("Input Error: Invalid version %s was asked to be used. Version neither available nor downloaded.", requestedVersion))
+			os.Exit(1)
+		}
+
+		if requiredDownloadedVersion == nil {
+			color.Yellow(fmt.Sprintf("Version %s not downloaded yet. Downloading now...", requestedVersion))
+			downloadCmd.Run(cmd, []string{requestedVersion})
+
+			// downloading the golang version and updating config for evaluation
+			gvmConfig, err = internal.LoadConfig()
+			if err != nil {
+				color.Red(err.Error())
+				os.Exit(1)
+			}
+
+			// get the DownloadedVersion instance from the newly updated config
+			for _, downloadedVersion := range gvmConfig.DownloadedVersions {
+				raw_version := strings.Replace(downloadedVersion.Version, "go", "", 1)
+
+				if requestedVersion == raw_version {
+					requiredDownloadedVersion = &downloadedVersion
+					break
+				}
+			}
+		} else {
+			color.Green(fmt.Sprintf("Version %s is already downloaded", requestedVersion))
+		}
+
+		// Setup guide:
+		// https://go.dev/doc/install
+
+		// delete current golang installation
+		internal.PurgeCurrentGolangInstallation()
+
+		// decompress tarball
+		if _, err := internal.ExecShellCommand(fmt.Sprintf("tar -C /usr/local -xzf %s", requiredDownloadedVersion.TarPath)); err != nil {
+			color.Red(err.Error())
+			os.Exit(1)
+		}
+
+		// set the path
+		if _, err := internal.ExecShellCommand("export PATH=$PATH:/usr/local/go/bin"); err != nil {
+			color.Red(err.Error())
+			os.Exit(1)
+		}
+
+		color.Green(fmt.Sprintf("Now using go version %s. Run go version to confirm", requestedVersion))
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(useCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// useCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// useCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
