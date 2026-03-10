@@ -24,6 +24,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/fatih/color"
@@ -135,13 +136,16 @@ Examples:
 			os.Exit(1)
 		}
 
-		// set the path
-		if _, err := internal.ExecShellCommand("export PATH=$PATH:/usr/local/go/bin"); err != nil {
-			color.Red(err.Error())
-			os.Exit(1)
-		}
+		// The execution context of the binary makes the error
+		// "exec: "export": executable file not found in $PATH"
+		// So leave it to user to do it
+		pathVars := os.Getenv("PATH")
+		pathIncluded := slices.Contains(strings.Split(string(pathVars), ":"), "/usr/local/go/bin")
 
-		color.Green(fmt.Sprintf("Now using go version %s. Run go version to confirm", requestedVersion))
+		if !pathIncluded {
+			color.Red("No Path variable found. Execute the command below.")
+			color.Cyan("export PATH=$PATH:/usr/local/go/bin")
+		}
 	},
 }
 

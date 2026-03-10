@@ -234,9 +234,47 @@ This command updates the available list of all Go versions that can be downloade
 	},
 }
 
+var deleteVersionFromListCmd = &cobra.Command{
+	Use:   "delete <version>",
+	Short: "Deletes downloaded Go versions and marks them undownloaded",
+	Long:  `Permanently removes the downloaded tarball/files for a Go version and updates the config.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) == 0 {
+			color.Red("❌ Arg Error: Expected positional argument 'golang version'. Example: gvm delete 1.25.5")
+			os.Exit(1)
+		}
+
+		versionToBeDeleted := args[0]
+		if !internal.ValidateGoVersion(versionToBeDeleted) {
+			color.Red("🚫 Input Error: Version '%s' is not a valid golang version", versionToBeDeleted)
+			os.Exit(1)
+		}
+
+		config, err := internal.LoadConfig()
+		if err != nil {
+			color.Red("✗ Error loading configuration: %s", err.Error())
+			os.Exit(1)
+		}
+
+		fmt.Printf("🗑️  Attempting to delete Go version %s...\n", versionToBeDeleted)
+
+		config.RemoveDownloadedVersion(versionToBeDeleted)
+
+		err = config.Save()
+		if err != nil {
+			color.Red("💥 Error saving config: %s", err.Error())
+			os.Exit(1)
+		}
+
+		color.Green("✨ Successfully removed %s from downloaded list!", versionToBeDeleted)
+		color.Cyan("💡 Use 'gvm list -d' to verify your remaining versions.")
+	},
+}
+
 func init() {
-	listCmd.AddCommand(updateListCmd)
 	rootCmd.AddCommand(listCmd)
+	listCmd.AddCommand(updateListCmd)
+	listCmd.AddCommand(deleteVersionFromListCmd)
 
 	// Define flags for the list command
 	listCmd.Flags().BoolP("downloaded", "d", false, "Show downloaded versions only")

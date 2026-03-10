@@ -152,6 +152,41 @@ func (c *Config) GetLTSVersion() (*string, error) {
 	return nil, fmt.Errorf("Config Error: failed to fetch lts from config")
 }
 
+func (c *Config) RemoveDownloadedVersion(version string) error {
+	versionFmtToBeDeleted := fmt.Sprintf("go%s", version)
+	var versionToBeDeleted DownloadVersion
+	updatedDownloadedVersions := make(map[string]DownloadVersion)
+
+	isInDownload := false
+
+	err := os.Remove(versionToBeDeleted.TarPath)
+	if err != nil {
+		return fmt.Errorf("failed to delete the downloaded tar file of %s", versionFmtToBeDeleted)
+	}
+
+	for _, version := range c.DownloadedVersions {
+		if version.Version != versionFmtToBeDeleted {
+			updatedDownloadedVersions[version.Version] = version
+		} else {
+			versionToBeDeleted = version
+			isInDownload = true
+		}
+	}
+
+	c.DownloadedVersions = updatedDownloadedVersions
+
+	err = c.Save()
+	if err != nil {
+		return err
+	}
+
+	if !isInDownload {
+		return fmt.Errorf("go version %s haven't downloaded", versionFmtToBeDeleted)
+	}
+
+	return nil
+}
+
 func (c *Config) Save() error {
 	configPath, err := ConfigFilePath()
 	if err != nil {
