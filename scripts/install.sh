@@ -1,220 +1,162 @@
 #!/bin/bash
 
 # ============================================================================
-# GVM Installation Script
-# A beautiful, modern installer with smooth progress indicators
+# GVM INSTALLER: CYBER-CORE EDITION
+# Minimalist, high-contrast, and robust.
 # ============================================================================
 
 set -e
 
-# Configuration
+# --- Configuration & Styling ---
 VERBOSE=false
 [[ "$1" == "--verbose" || "$1" == "-v" ]] && VERBOSE=true
 
-# Color palette - Modern minimalist theme
+# Professional Neon Palette
+CLR_PRIME='\033[38;5;51m'   # Cyan
+CLR_ACCENT='\033[38;5;208m'  # Orange
+CLR_SUCCESS='\033[38;5;82m'  # Bright Green
+CLR_ERROR='\033[38;5;197m'    # Rose Red
+CLR_MUTE='\033[38;5;244m'    # Medium Gray
+CLR_DIM='\033[2m'
 BOLD='\033[1m'
-DIM='\033[2m'
 RESET='\033[0m'
-BLUE='\033[38;5;39m'
-GREEN='\033[38;5;42m'
-YELLOW='\033[38;5;220m'
-RED='\033[38;5;196m'
-GRAY='\033[38;5;240m'
-WHITE='\033[38;5;255m'
 
-# Unicode symbols
-CHECK="✓"
-CROSS="✗"
-ARROW="→"
-DOTS="..."
+# Symbols
+ICON_GEAR="⚙"
+ICON_DOWN="󰇚"
+ICON_SHIELD="󰒃"
+ICON_LINK=""
+ICON_CHECK="✔"
 
-# Logging functions
-log_verbose() {
-    if [ "$VERBOSE" = true ]; then
-        echo -e "${DIM}${GRAY}  ↳ $1${RESET}"
-    fi
+# --- UI Components ---
+log_step() {
+    echo -e "\n${CLR_PRIME}${BOLD}${ICON_GEAR} $1${RESET}"
 }
 
-step() {
-    echo -e "\n${BLUE}${BOLD}$1${RESET}"
+log_sub() {
+    echo -e "  ${CLR_MUTE}→ $1${RESET}"
 }
 
-success() {
-    echo -e "${GREEN}${CHECK}${RESET} $1"
+log_ok() {
+    echo -e "  ${CLR_SUCCESS}${ICON_CHECK} $1${RESET}"
 }
 
-error() {
-    echo -e "${RED}${CROSS}${RESET} $1"
-}
-
-info() {
-    echo -e "${GRAY}${ARROW}${RESET} $1"
+log_fail() {
+    echo -e "  ${CLR_ERROR}✘ $1${RESET}"
 }
 
 spinner() {
     local pid=$1
     local msg=$2
-    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    local i=0
+    local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
     
-    if [ "$VERBOSE" = true ]; then
-        wait $pid
-        return
-    fi
+    if [ "$VERBOSE" = true ]; then wait $pid; return; fi
     
-    echo -n "  "
     while kill -0 $pid 2>/dev/null; do
-        i=$(( (i+1) %10 ))
-        printf "\r  ${BLUE}${spin:$i:1}${RESET} ${msg}${DOTS}"
-        sleep 0.1
+        for i in {0..9}; do
+            printf "\r  ${CLR_ACCENT}${frames:$i:1}${RESET} ${msg}..."
+            sleep 0.1
+        done
     done
-    printf "\r  ${GREEN}${CHECK}${RESET} ${msg}\n"
+    printf "\r  ${CLR_SUCCESS}${ICON_CHECK}${RESET} ${msg} [COMPLETE]\n"
 }
 
-# Header
+# --- Header ---
 clear
-echo ""
-echo -e "${BLUE}${BOLD}"
-echo "  ╔═══════════════════════════════════════╗"
-echo "  ║                                       ║"
-echo "  ║         GVM INSTALLER SCRIPT          ║"
-echo "  ║                                       ║"
-echo "  ╚═══════════════════════════════════════╝"
-echo -e "${RESET}"
-echo -e "${DIM}${GRAY}  Go Version Manager Installation${RESET}"
-echo ""
+echo -e "${CLR_PRIME}${BOLD}"
+echo " ┌───────────────────────────────────────┐"
+echo " │       GVM | Go Version Manager        │"
+echo " └───────────────────────────────────────┘"
+echo -e "${RESET}${CLR_MUTE}   Initializing secure installation...${RESET}\n"
 
-if [ "$VERBOSE" = true ]; then
-    info "Verbose mode enabled"
-fi
-
-# Step 1: Authentication
-step "Authentication"
-log_verbose "Requesting administrative privileges"
-
+# --- 1. System Check & Auth ---
+log_step "Elevating Privileges"
 if sudo -v; then
-    success "Administrative access granted"
-    log_verbose "Sudo session cached successfully"
+    log_ok "Auth confirmed"
 else
-    error "Failed to obtain administrative privileges"
+    log_fail "Sudo required for system integration"
     exit 1
 fi
 
-# Step 2: Cleanup
-step "Environment Preparation"
-log_verbose "Checking for existing GVM installation"
-
+# --- 2. Workspace Prep ---
+log_step "Cleaning Environment"
 if [ -d "/usr/local/gvm" ]; then
-    info "Found previous installation, removing..."
-    log_verbose "Purging directory: /usr/local/gvm"
+    log_sub "Removing stale files at /usr/local/gvm"
     sudo rm -rf /usr/local/gvm
-    success "Previous installation removed"
 fi
+sudo rm -f /usr/local/bin/gvm
+log_ok "Workspace ready"
 
-if [ -L "/usr/local/bin/gvm" ]; then
-    log_verbose "Removing existing symlink"
-    sudo rm -f /usr/local/bin/gvm
-fi
-
-# Step 3: Fetch latest version
-step "Version Detection"
-info "Querying GitHub for latest release"
-
+# --- 3. Versioning ---
+log_step "Fetching Release Data"
 QUERY_URL="https://api.github.com/repos/Vilayat-Ali/gvm/releases/latest"
-log_verbose "API endpoint: $QUERY_URL"
-
 LATEST_TAG=$(curl -s "$QUERY_URL" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
 LATEST_TAG=${LATEST_TAG:-"v1.0.0"}
 
-success "Latest version: ${BOLD}${LATEST_TAG}${RESET}"
-log_verbose "Download URL constructed"
-
+log_sub "Target Version: ${CLR_ACCENT}${LATEST_TAG}${RESET}"
 BINARY_URL="https://github.com/Vilayat-Ali/gvm/releases/download/$LATEST_TAG/gvm-linux-x86.tar.gz"
 
-# Step 4: Download
-step "Package Download"
+# --- 4. Retrieval ---
+log_step "Synchronizing Binary"
 TMP_DIR=$(mktemp -d)
-log_verbose "Temporary directory: $TMP_DIR"
 
 if [ "$VERBOSE" = true ]; then
-    info "Downloading and extracting GVM binary..."
     curl -L "$BINARY_URL" | tar -xzv -C "$TMP_DIR"
-    success "Download complete"
 else
     (curl -Lfs "$BINARY_URL" | tar -xz -C "$TMP_DIR") &
-    spinner $! "Downloading GVM binary"
+    spinner $! "Downloading assets"
 fi
 
-# Step 5: Installation
-step "Binary Installation"
-
+# --- 5. Deployment ---
+log_step "Deploying Core"
 GVM_SOURCE=$(find "$TMP_DIR" -type f -name "gvm" | head -n 1)
 
 if [ -z "$GVM_SOURCE" ]; then
-    error "Binary not found in archive"
-    log_verbose "Archive contents: $(ls -R "$TMP_DIR")"
+    log_fail "Binary extraction failed"
     rm -rf "$TMP_DIR"
     exit 1
 fi
 
-log_verbose "Binary located: $GVM_SOURCE"
-info "Installing to /usr/local/gvm"
-
 sudo mkdir -p /usr/local/gvm
 sudo mv "$GVM_SOURCE" /usr/local/gvm/gvm
+log_ok "Binary moved to /usr/local/gvm"
 
-success "Binary installed"
+# --- 6. Security Hardening ---
+# Applying the specific permissions requested
+log_step "Hardening Permissions"
+log_sub "Applying SUID & Root Ownership"
 
-# Step 6: Permissions
-step "System Integration"
-
-log_verbose "Setting ownership to root:root"
 sudo chown root:root /usr/local/gvm/gvm
+sudo chmod u+s /usr/local/gvm/gvm
 
-log_verbose "Applying executable permissions (4755)"
-sudo chmod 4755 /usr/local/gvm/gvm
+log_ok "Permissions secured (root:root, u+s)"
 
-info "Creating symlink in /usr/local/bin"
+# --- 7. Linking ---
+log_step "Global Integration"
 sudo ln -sf /usr/local/gvm/gvm /usr/local/bin/gvm
+log_ok "Symlink created in /usr/local/bin"
 
-success "System integration complete"
-
-# Step 7: PATH configuration
-step "Shell Configuration"
-
+# --- 8. Path Configuration ---
+log_step "Configuring Shell"
 for PROFILE in "$HOME/.zshrc" "$HOME/.bashrc"; do
     if [ -f "$PROFILE" ]; then
         if ! grep -q "/usr/local/gvm" "$PROFILE"; then
-            log_verbose "Updating $PROFILE"
-            echo -e "\n# GVM - Go Version Manager\nexport PATH=\"\$PATH:/usr/local/gvm\"" >> "$PROFILE"
-            success "Updated $(basename $PROFILE)"
+            echo -e "\n# GVM Configuration\nexport PATH=\"\$PATH:/usr/local/gvm\"" >> "$PROFILE"
+            log_ok "Added to $(basename $PROFILE)"
         else
-            info "$(basename $PROFILE) already configured"
+            log_sub "$(basename $PROFILE) already configured"
         fi
     fi
 done
 
 # Cleanup
-log_verbose "Removing temporary files"
 rm -rf "$TMP_DIR"
 
-# Success message
-echo ""
-echo -e "${GREEN}${BOLD}"
-echo "  ╔═══════════════════════════════════════╗"
-echo "  ║                                       ║"
-echo "  ║     Installation Successful! 🎉       ║"
-echo "  ║                                       ║"
-echo "  ╚═══════════════════════════════════════╝"
-echo -e "${RESET}"
-echo ""
-echo -e "${YELLOW}${BOLD}Next Steps:${RESET}"
-echo -e "  ${GRAY}1.${RESET} Run: ${BOLD}source ~/.zshrc${RESET} ${DIM}(or ~/.bashrc)${RESET}"
-echo -e "  ${GRAY}2.${RESET} Verify: ${BOLD}gvm --version${RESET}"
-echo -e "  ${GRAY}3.${RESET} Get started: ${BOLD}gvm --help${RESET}"
-echo ""
-echo -e "${DIM}${GRAY}─────────────────────────────────────────${RESET}"
-echo -e "${DIM}Built with ❤️  by ${RESET}${BOLD}Vilayat${RESET}"
-echo -e "${DIM}GitHub: ${RESET}${BLUE}https://github.com/Vilayat-Ali${RESET}"
-echo -e "${DIM}${GRAY}─────────────────────────────────────────${RESET}"
-echo ""
+# --- Success Footer ---
+echo -e "\n${CLR_SUCCESS}${BOLD}  DEPLOYMENT SUCCESSFUL${RESET}"
+echo -e "  ${CLR_MUTE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "  ${BOLD}1.${RESET} Refresh:   ${CLR_ACCENT}source ~/.zshrc${RESET} (or .bashrc)"
+echo -e "  ${BOLD}2.${RESET} Check:     ${CLR_ACCENT}gvm --version${RESET}"
+echo -e "  ${BOLD}3.${RESET} Help:      ${CLR_ACCENT}gvm --help${RESET}"
+echo -e "  ${CLR_MUTE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "  ${CLR_DIM}Crafted by Vilayat Ali | github.com/Vilayat-Ali${RESET}\n"
