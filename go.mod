@@ -1,6 +1,6 @@
 module github.com/vilayat-ali/gvm
 
-go 1.26.1
+go 1.25.5
 
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
