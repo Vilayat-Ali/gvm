@@ -231,7 +231,7 @@ func showAvailableVersions() {
 
 	fmt.Println()
 	color.Cyan("Quick actions:")
-	color.White("  gvm download %s → grab the LTS version", config.AvailableVersions[0].Version)
+	color.White("  gvm download %s → grab the LTS version", strings.Split(config.AvailableVersions[0].Version, "go")[1])
 	fmt.Println()
 }
 
