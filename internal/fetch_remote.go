@@ -24,8 +24,10 @@ type RemoteVersion struct {
 // Shows progress, verifies checksum after download, and removes the file if verification fails.
 func (rv *RemoteVersion) Download() (*string, error) {
 	goos, goarch := getOSAndArch()
-	color.Dim(fmt.Sprintf("  Platform: %s/%s", goos, goarch))
-	color.Dim(fmt.Sprintf("  Source: %s", rv.DownloadLink))
+
+	faint := color.New(color.Faint)
+	faint.Printf("  Platform: %s/%s\n", goos, goarch)
+	faint.Println(fmt.Sprintf("  Source: %s", rv.DownloadLink))
 
 	resp, err := http.Get(rv.DownloadLink)
 	if err != nil {
@@ -57,7 +59,7 @@ func (rv *RemoteVersion) Download() (*string, error) {
 		return nil, fmt.Errorf("failed to write file: %w", err)
 	}
 
-	color.Dim("  Verifying integrity...")
+	faint.Println("  Verifying integrity...")
 	valid, err := rv.VerifyChecksum(filePath)
 	if err != nil {
 		color.Yellow("  ⚠️  Warning: Could not verify checksum: %s", err.Error())

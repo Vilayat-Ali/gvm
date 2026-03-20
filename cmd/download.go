@@ -56,10 +56,12 @@ Examples:
 			os.Exit(1)
 		}
 
+		faint := color.New(color.Faint)
+
 		requestedVersion := args[0]
 		if !internal.ValidateGoVersion(requestedVersion) {
 			color.Red("❌ '%s' doesn't look like a valid Go version", requestedVersion)
-			color.Dim("  Go versions look like: 1.21.0, 1.22.0, 1.23.0-rc1")
+			faint.Println("  Go versions look like: 1.21.0, 1.22.0, 1.23.0-rc1")
 			os.Exit(1)
 		}
 

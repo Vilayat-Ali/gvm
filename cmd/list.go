@@ -102,7 +102,7 @@ func showDownloadedVersions() {
 		isRC := strings.Contains(version, "rc")
 		isCurrent := isCurrentVersion(version, currentVersion)
 
-		isSystemVersion := systemInstalled && currentVersion != nil && 
+		isSystemVersion := systemInstalled && currentVersion != nil &&
 			strings.TrimPrefix(version, "go") == *currentVersion
 
 		var marker string
@@ -147,6 +147,7 @@ func showDownloadedVersions() {
 }
 
 func showCurrentVersion() {
+	faint := color.New(color.Faint)
 	currentVersion, err := internal.GetCurrentGolangVersion()
 	if err != nil {
 		color.Yellow("🤔 No Go version detected")
@@ -162,7 +163,7 @@ func showCurrentVersion() {
 	color.Green("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	color.New(color.FgGreen, color.Bold).Printf("\n     %s\n", *currentVersion)
 	if systemInstalled {
-		color.Dim("     (System installation)")
+		faint.Printf("     (System installation)")
 	}
 	fmt.Println()
 }
@@ -241,6 +242,8 @@ var updateListCmd = &cobra.Command{
 
 Run this periodically to see newly released Go versions!`,
 	Run: func(cmd *cobra.Command, args []string) {
+		faint := color.New(color.Faint)
+
 		fmt.Println()
 		color.Cyan("🔄 Fetching latest Go versions from the matrix...")
 		fmt.Println()
@@ -251,7 +254,7 @@ Run this periodically to see newly released Go versions!`,
 			os.Exit(1)
 		}
 
-		color.Dim("  Connecting to go.dev...")
+		faint.Printf("  Connecting to go.dev...")
 
 		if err := config.UpdateAvailableVersions(); err != nil {
 			color.Red("❌ Fetch failed: %s", err.Error())

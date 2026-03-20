@@ -60,12 +60,16 @@ Pro tip: You only need to run this once!`,
 			os.Exit(1)
 		}
 
+		bold := color.New(color.Bold).SprintFunc()
+
 		color.Green("✨ Boom! gvm is ready to roll!")
 		fmt.Println()
 		color.Yellow("Next steps:")
-		color.White("  1. %s gvm list%s - check available Go versions", color.BoldString("run"), color.ResetString(""))
-		color.White("  2. %s gvm download 1.22.0%s - grab a version", color.BoldString("run"), color.ResetString(""))
-		color.White("  3. %s gvm use 1.22.0%s - start coding!", color.BoldString("run"), color.ResetString(""))
+		white := color.New(color.FgWhite)
+
+		white.Printf("  1. %s gvm list - check available Go versions\n", bold("run"))
+		white.Printf("  2. %s gvm download 1.22.0 - grab a version\n", bold("run"))
+		white.Printf("  3. %s gvm use 1.22.0 - start coding!\n", bold("run"))
 		fmt.Println()
 		color.Green("Happy coding! 🎉")
 	},

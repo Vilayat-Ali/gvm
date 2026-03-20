@@ -74,6 +74,8 @@ Examples:
   gvm use 1.22.0    → switch to Go 1.22.0
   gvm use 1.21.0    → switch to Go 1.21.0`,
 	Run: func(cmd *cobra.Command, args []string) {
+		faint := color.New(color.Faint)
+
 		if len(args) == 0 {
 			color.Red("❌ Oops! You forgot the version")
 			color.Cyan("  Usage: gvm use <version>")
@@ -127,14 +129,14 @@ Examples:
 		color.Cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Println()
 
-		color.Dim("  Removing old installation...")
+		faint.Println("  Removing old installation...")
 
 		if err := internal.PurgeCurrentGolangInstallation(); err != nil {
 			color.Red("❌ Couldn't remove old version: %s", err.Error())
 			os.Exit(1)
 		}
 
-		color.Dim("  Extracting new version...")
+		faint.Println("  Extracting new version...")
 
 		if _, err := internal.ExecShellCommand("tar", "-C", "/usr/local", "-xzf", requiredDownloadedVersion.TarPath); err != nil {
 			color.Red("❌ Extraction failed: %s", err.Error())
