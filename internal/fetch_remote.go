@@ -14,13 +14,19 @@ import (
 	progressbar "github.com/schollz/progressbar/v3"
 )
 
-// Version metadata for remote versions for download
+// RemoteVersion represents a Go version available for download from go.dev.
 type RemoteVersion struct {
 	Version      string `json:"version"`
 	DownloadLink string `json:"download_link"`
 }
 
+// Download downloads the Go version tarball to the local storage directory.
+// Shows progress, verifies checksum after download, and removes the file if verification fails.
 func (rv *RemoteVersion) Download() (*string, error) {
+	goos, goarch := getOSAndArch()
+	color.Dim(fmt.Sprintf("  Platform: %s/%s", goos, goarch))
+	color.Dim(fmt.Sprintf("  Source: %s", rv.DownloadLink))
+
 	resp, err := http.Get(rv.DownloadLink)
 	if err != nil {
 		return nil, fmt.Errorf("download error (%s): %w", rv.Version, err)
@@ -45,22 +51,32 @@ func (rv *RemoteVersion) Download() (*string, error) {
 	defer out.Close()
 
 	totalSize := resp.ContentLength
-	progress := progressbar.DefaultBytes(totalSize, "downloading")
+	progress := progressbar.DefaultBytes(totalSize, "  downloading...")
 
 	if _, err := io.Copy(io.MultiWriter(out, progress), resp.Body); err != nil {
-		color.Red(err.Error())
+		return nil, fmt.Errorf("failed to write file: %w", err)
+	}
+
+	color.Dim("  Verifying integrity...")
+	valid, err := rv.VerifyChecksum(filePath)
+	if err != nil {
+		color.Yellow("  ⚠️  Warning: Could not verify checksum: %s", err.Error())
+	} else if !valid {
+		os.Remove(filePath)
+		return nil, fmt.Errorf("checksum verification failed for %s", rv.Version)
+	} else {
+		color.Green("  ✓ Checksum verified")
 	}
 
 	return &filePath, nil
 }
 
-// Golang release url
+// GO_GITHUB_RELEASE_URL is the GitHub page to scrape for Go release information.
 const GO_GITHUB_RELEASE_URL = "https://github.com/golang/go/tags"
 
-// This function downloads the HTML of official Golang release page on
-// their github @ "https://github.com/golang/go/tags"
-// Then it uses goquery to parse HTML and fetch 10 most recent golang
-// versions
+// FetchGoVersionsFromGoGithubRelease scrapes the GitHub releases page and returns
+// the 10 most recent Go versions available for download. Constructs download URLs
+// based on the current platform (OS and architecture).
 func FetchGoVersionsFromGoGithubRelease() ([]RemoteVersion, error) {
 	response, err := http.Get(GO_GITHUB_RELEASE_URL)
 	if err != nil {
@@ -70,7 +86,7 @@ func FetchGoVersionsFromGoGithubRelease() ([]RemoteVersion, error) {
 	defer response.Body.Close()
 
 	if response.StatusCode != 200 {
-		return nil, fmt.Errorf("Failed to fetch go version from github releases. Status Code: %d. Status: %s", response.StatusCode, response.Status)
+		return nil, fmt.Errorf("failed to fetch releases. HTTP %d: %s", response.StatusCode, response.Status)
 	}
 
 	doc, err := goquery.NewDocumentFromReader(response.Body)
@@ -80,36 +96,38 @@ func FetchGoVersionsFromGoGithubRelease() ([]RemoteVersion, error) {
 
 	releaseTableRows := doc.Find("div.Box-body").Children()
 	if releaseTableRows == nil {
-		return nil, fmt.Errorf("failed to fetch releases from official github releases. Check UI for diff.")
+		return nil, fmt.Errorf("failed to fetch releases from GitHub - page structure may have changed")
 	}
 
 	releases := make([]RemoteVersion, 10)
+	goos, goarch := getOSAndArch()
 
 	for idx, release_row := range releaseTableRows.EachIter() {
 		version_name_selection := release_row.Find("a.Link--primary")
 		if version_name_selection == nil {
-			return nil, fmt.Errorf("failed to parse selection for version name from github. Diff UI")
+			return nil, fmt.Errorf("failed to parse version name from GitHub")
 		}
 
 		version_download_link := release_row.Find("a[href*='.tar.gz']")
 		if version_download_link == nil {
-			return nil, fmt.Errorf("failed to parse selection for version download link from github. Diff UI")
+			return nil, fmt.Errorf("failed to parse download link from GitHub")
 		}
 
 		version := version_name_selection.Text()
 		downloadLink, hrefExists := version_download_link.Attr("href")
 
 		if !hrefExists {
-			return nil, fmt.Errorf("failed to parse download link from github. Diff UI")
+			return nil, fmt.Errorf("failed to parse download link")
 		}
 
 		if version == "" || downloadLink == "" {
-			return nil, fmt.Errorf("failed to parse values for version or download link from github. Diff UI")
+			return nil, fmt.Errorf("failed to parse version or download link")
 		}
 
 		scrappedDownloadLinkParts := strings.Split(downloadLink, "/")
 		scrappedFileName := scrappedDownloadLinkParts[len(scrappedDownloadLinkParts)-1]
-		downloadableBinaryName := fmt.Sprintf("%s.linux-amd64.tar.gz", strings.Replace(scrappedFileName, ".tar.gz", "", 1))
+		baseVersion := strings.Replace(scrappedFileName, ".tar.gz", "", 1)
+		downloadableBinaryName := fmt.Sprintf("%s.%s-%s.tar.gz", baseVersion, goos, goarch)
 
 		releases[idx] = RemoteVersion{
 			Version:      version,

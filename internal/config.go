@@ -10,13 +10,15 @@ import (
 )
 
 const (
-	AppVersion    = "v1.0.0"
+	AppVersion    = "v2.0.0"
 	AppName       = "gvm"
 	ConfigDirName = "gvm"
 	ConfigFile    = "config.json"
 	GoVersionsDir = "go-versions"
 )
 
+// Config represents the gvm configuration stored in ~/.config/gvm/config.json.
+// It tracks available and downloaded Go versions along with metadata.
 type Config struct {
 	Version            string                     `json:"version"`
 	DownloadPath       string                     `json:"download_path"`
@@ -25,7 +27,7 @@ type Config struct {
 	DownloadedVersions map[string]DownloadVersion `json:"downloaded_versions"`
 }
 
-// Path management functions
+// ConfigDir returns the configuration directory path (~/.config/gvm).
 func ConfigDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -34,6 +36,7 @@ func ConfigDir() (string, error) {
 	return filepath.Join(home, ".config", ConfigDirName), nil
 }
 
+// ConfigFilePath returns the full path to the config.json file.
 func ConfigFilePath() (string, error) {
 	configDir, err := ConfigDir()
 	if err != nil {
@@ -42,19 +45,19 @@ func ConfigFilePath() (string, error) {
 	return filepath.Join(configDir, ConfigFile), nil
 }
 
+// GoDownloadDir returns the directory where Go version tarballs are stored.
+// Default: /usr/local/gvm/go-versions/
 func GoDownloadDir() (*string, error) {
-	// Try system location first
 	systemPath := filepath.Join("/usr/local", AppName, GoVersionsDir)
 	if err := os.MkdirAll(systemPath, 0755); err == nil {
 		return &systemPath, nil
 	}
 
-	return nil, fmt.Errorf("Root user permission required. Run again with sudo prefix.")
+	return nil, fmt.Errorf("root user permission required. Run again with sudo prefix")
 }
 
-// Setup functions
+// ensureDirectories creates all necessary directories for gvm to function.
 func ensureDirectories() error {
-	// Create config directory
 	configDir, err := ConfigDir()
 	if err != nil {
 		return err
@@ -63,7 +66,6 @@ func ensureDirectories() error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	// Create go versions directory
 	goDir, err := GoDownloadDir()
 	if err != nil {
 		return err
@@ -75,6 +77,8 @@ func ensureDirectories() error {
 	return nil
 }
 
+// SetupConfig initializes gvm's configuration for first-time use.
+// Creates directories, fetches available versions, and saves the config.
 func SetupConfig() error {
 	if err := ensureDirectories(); err != nil {
 		return err
@@ -101,7 +105,7 @@ func SetupConfig() error {
 	return config.Save()
 }
 
-// Config file operations
+// ConfigExists checks if gvm has been configured (config file exists).
 func ConfigExists() bool {
 	configPath, err := ConfigFilePath()
 	if err != nil {
@@ -111,6 +115,7 @@ func ConfigExists() bool {
 	return err == nil
 }
 
+// LoadConfig reads and parses the gvm configuration file.
 func LoadConfig() (*Config, error) {
 	configPath, err := ConfigFilePath()
 	if err != nil {
@@ -119,7 +124,7 @@ func LoadConfig() (*Config, error) {
 
 	file, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w. Please run `gvm configure` once.", err)
+		return nil, fmt.Errorf("failed to read config file: %w. Please run `gvm configure` first", err)
 	}
 
 	var config Config
@@ -130,6 +135,7 @@ func LoadConfig() (*Config, error) {
 	return &config, nil
 }
 
+// GetDownloadedVersions returns a list of versions that have been downloaded.
 func (c *Config) GetDownloadedVersions() *[]DownloadVersion {
 	downloadedVersions := make([]DownloadVersion, 0)
 
@@ -142,6 +148,7 @@ func (c *Config) GetDownloadedVersions() *[]DownloadVersion {
 	return &downloadedVersions
 }
 
+// GetLTSVersion returns the first non-RC version as the LTS candidate.
 func (c *Config) GetLTSVersion() (*string, error) {
 	for _, remote := range c.AvailableVersions {
 		if !strings.Contains(remote.Version, "rc") {
@@ -149,44 +156,29 @@ func (c *Config) GetLTSVersion() (*string, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("Config Error: failed to fetch lts from config")
+	return nil, fmt.Errorf("config error: failed to fetch LTS version")
 }
 
+// RemoveDownloadedVersion removes a downloaded Go version from the system.
+// Deletes the tarball file and updates the config.
 func (c *Config) RemoveDownloadedVersion(version string) error {
 	versionFmtToBeDeleted := fmt.Sprintf("go%s", version)
-	var versionToBeDeleted DownloadVersion
-	updatedDownloadedVersions := make(map[string]DownloadVersion)
 
-	isInDownload := false
-
-	err := os.Remove(versionToBeDeleted.TarPath)
-	if err != nil {
-		return fmt.Errorf("failed to delete the downloaded tar file of %s", versionFmtToBeDeleted)
+	versionToBeDeleted, exists := c.DownloadedVersions[versionFmtToBeDeleted]
+	if !exists {
+		return fmt.Errorf("go version %s is not downloaded", versionFmtToBeDeleted)
 	}
 
-	for _, version := range c.DownloadedVersions {
-		if version.Version != versionFmtToBeDeleted {
-			updatedDownloadedVersions[version.Version] = version
-		} else {
-			versionToBeDeleted = version
-			isInDownload = true
-		}
+	if err := os.Remove(versionToBeDeleted.TarPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete the downloaded tar file of %s: %w", versionFmtToBeDeleted, err)
 	}
 
-	c.DownloadedVersions = updatedDownloadedVersions
+	delete(c.DownloadedVersions, versionFmtToBeDeleted)
 
-	err = c.Save()
-	if err != nil {
-		return err
-	}
-
-	if !isInDownload {
-		return fmt.Errorf("go version %s haven't downloaded", versionFmtToBeDeleted)
-	}
-
-	return nil
+	return c.Save()
 }
 
+// Save writes the current config to ~/.config/gvm/config.json.
 func (c *Config) Save() error {
 	configPath, err := ConfigFilePath()
 	if err != nil {
@@ -205,10 +197,11 @@ func (c *Config) Save() error {
 	return nil
 }
 
-// Config operations
+// MarkVersionAsDownloaded records that a version has been downloaded.
+// Stores the tarball path in the config for future reference.
 func (c *Config) MarkVersionAsDownloaded(remoteVersion *RemoteVersion, tarballPath string) error {
 	if remoteVersion == nil {
-		return fmt.Errorf("Invalid Remote Version instance was provided")
+		return fmt.Errorf("invalid remote version provided")
 	}
 
 	if _, exists := c.DownloadedVersions[remoteVersion.Version]; exists {
@@ -220,36 +213,27 @@ func (c *Config) MarkVersionAsDownloaded(remoteVersion *RemoteVersion, tarballPa
 		TarPath: tarballPath,
 	}
 
-	if err := c.Save(); err != nil {
-		return err
-	}
-
-	if err := c.Save(); err != nil {
-		return err
-	}
-
-	return nil
+	return c.Save()
 }
 
+// UpdateAvailableVersions fetches the latest Go versions from GitHub
+// and updates the config with new releases.
 func (c *Config) UpdateAvailableVersions() error {
 	newVersions, err := FetchGoVersionsFromGoGithubRelease()
 	if err != nil {
 		return fmt.Errorf("failed to fetch new versions: %w", err)
 	}
 
-	// Keep only top 10 versions
 	limit := 10
 	if len(newVersions) > limit {
 		newVersions = newVersions[:limit]
 	}
 
-	// Create a set of existing versions for quick lookup
 	existingSet := make(map[string]bool)
 	for _, v := range c.AvailableVersions {
 		existingSet[v.Version] = true
 	}
 
-	// Add only new versions
 	var latestVersions []RemoteVersion
 	for _, v := range newVersions {
 		if !existingSet[v.Version] {
@@ -257,7 +241,6 @@ func (c *Config) UpdateAvailableVersions() error {
 		}
 	}
 
-	// Add existing versions to fill up to limit
 	for _, v := range c.AvailableVersions {
 		if len(latestVersions) >= limit {
 			break

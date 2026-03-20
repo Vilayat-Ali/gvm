@@ -32,120 +32,131 @@ import (
 	"github.com/vilayat-ali/gvm/internal"
 )
 
-// useCmd represents the use command
+func findDownloadedVersion(config *internal.Config, version string) *internal.DownloadVersion {
+	normalizedVersion := internal.NormalizeVersion(version)
+	for _, downloadedVersion := range config.DownloadedVersions {
+		if internal.NormalizeVersion(downloadedVersion.Version) == normalizedVersion {
+			return &downloadedVersion
+		}
+	}
+	return nil
+}
+
+func isVersionAvailable(config *internal.Config, version string) bool {
+	normalizedVersion := internal.NormalizeVersion(version)
+	for _, availableVersion := range config.AvailableVersions {
+		if internal.NormalizeVersion(availableVersion.Version) == normalizedVersion {
+			return true
+		}
+	}
+	return false
+}
+
+func getDownloadedVersion(config *internal.Config, version string) *internal.DownloadVersion {
+	normalizedVersion := internal.NormalizeVersion(version)
+	for _, downloadedVersion := range config.DownloadedVersions {
+		if internal.NormalizeVersion(downloadedVersion.Version) == normalizedVersion {
+			return &downloadedVersion
+		}
+	}
+	return nil
+}
+
 var useCmd = &cobra.Command{
 	Use:   "use <version>",
-	Short: "Select a Go version for use on this machine",
-	Long: `Select a Go toolchain version to be used across the system or in the current shell.
+	Short: "switch to a Go version 🔄",
+	Long: `Activate a Go version and start coding!
 
-This command will ensure the requested Go version is installed (if supported),
-configure the environment, and set it as the active Go version.
+This command sets the specified Go version as your active version.
+If you haven't downloaded it yet, gvm will grab it for you first.
 
 Examples:
-  mycli use 1.22.2
-  mycli use latest
-  mycli use 1.20`,
+  gvm use 1.22.0    → switch to Go 1.22.0
+  gvm use 1.21.0    → switch to Go 1.21.0`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
-			color.Red("Arg Error: Expected positional arguement 'golang version'. Example gvm download 1.25.5")
+			color.Red("❌ Oops! You forgot the version")
+			color.Cyan("  Usage: gvm use <version>")
+			color.White("  Example: gvm use 1.22.0")
 			os.Exit(1)
 		}
 
 		requestedVersion := args[0]
 		if !internal.ValidateGoVersion(requestedVersion) {
-			color.Red(fmt.Sprintf("Input Error: Version '%s' is not a valid golang version", requestedVersion))
+			color.Red("❌ '%s' doesn't look like a valid Go version", requestedVersion)
 			os.Exit(1)
 		}
 
 		gvmConfig, err := internal.LoadConfig()
 		if err != nil {
-			color.Red(err.Error())
+			color.Red("❌ Couldn't load config: %s", err.Error())
 			os.Exit(1)
 		}
 
-		if !internal.ValidateGoVersion(requestedVersion) {
-			color.Red("Input Error: Invalid golang version requested")
+		if !isVersionAvailable(gvmConfig, requestedVersion) {
+			color.Red("❌ Version %s is not available", requestedVersion)
+			color.Cyan("  Run 'gvm list update' to refresh available versions")
 			os.Exit(1)
 		}
 
-		var isAvailable bool = false
-		var requiredDownloadedVersion *internal.DownloadVersion
-
-		for _, downloadedVersion := range gvmConfig.DownloadedVersions {
-			raw_version := strings.Replace(downloadedVersion.Version, "go", "", 1)
-
-			if requestedVersion == raw_version {
-				requiredDownloadedVersion = &downloadedVersion
-				break
-			}
-		}
-
-		for _, availableVersion := range gvmConfig.AvailableVersions {
-			raw_version := strings.Replace(availableVersion.Version, "go", "", 1)
-
-			if requestedVersion == raw_version {
-				isAvailable = true
-				break
-			}
-		}
-
-		if !isAvailable {
-			color.Red("Input Error: Invalid version %s. Version not available for download.", requestedVersion)
-			color.Blue("Run `gvm list update` to update the version list available")
-			os.Exit(1)
-		}
-
-		if !isAvailable && requiredDownloadedVersion == nil {
-			color.Red(fmt.Sprintf("Input Error: Invalid version %s was asked to be used. Version neither available nor downloaded.", requestedVersion))
-			os.Exit(1)
-		}
+		requiredDownloadedVersion := findDownloadedVersion(gvmConfig, requestedVersion)
 
 		if requiredDownloadedVersion == nil {
-			color.Yellow(fmt.Sprintf("Version %s not downloaded yet. Downloading now...", requestedVersion))
+			color.Yellow("📦 Version not downloaded yet, grabbing it for you...")
 			downloadCmd.Run(cmd, []string{requestedVersion})
 
-			// downloading the golang version and updating config for evaluation
 			gvmConfig, err = internal.LoadConfig()
 			if err != nil {
-				color.Red(err.Error())
+				color.Red("❌ Couldn't reload config: %s", err.Error())
 				os.Exit(1)
 			}
 
-			// get the DownloadedVersion instance from the newly updated config
-			for _, downloadedVersion := range gvmConfig.DownloadedVersions {
-				raw_version := strings.Replace(downloadedVersion.Version, "go", "", 1)
-
-				if requestedVersion == raw_version {
-					requiredDownloadedVersion = &downloadedVersion
-					break
-				}
+			requiredDownloadedVersion = getDownloadedVersion(gvmConfig, requestedVersion)
+			if requiredDownloadedVersion == nil {
+				color.Red("❌ Something went wrong - couldn't find the downloaded version")
+				os.Exit(1)
 			}
 		} else {
-			color.Green(fmt.Sprintf("Version %s is already downloaded", requestedVersion))
+			fmt.Println()
+			color.Green("✨ Found cached version, installing...")
 		}
 
-		// Setup guide:
-		// https://go.dev/doc/install
+		fmt.Println()
+		color.Cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		color.Cyan("          ⚙️  SWITCHING TO GO %s", strings.ToUpper(requestedVersion))
+		color.Cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println()
 
-		// delete current golang installation
-		internal.PurgeCurrentGolangInstallation()
+		color.Dim("  Removing old installation...")
 
-		// decompress tarball
-		if _, err := internal.ExecShellCommand(fmt.Sprintf("tar -C /usr/local -xzf %s", requiredDownloadedVersion.TarPath)); err != nil {
-			color.Red(err.Error())
+		if err := internal.PurgeCurrentGolangInstallation(); err != nil {
+			color.Red("❌ Couldn't remove old version: %s", err.Error())
 			os.Exit(1)
 		}
 
-		// The execution context of the binary makes the error
-		// "exec: "export": executable file not found in $PATH"
-		// So leave it to user to do it
+		color.Dim("  Extracting new version...")
+
+		if _, err := internal.ExecShellCommand("tar", "-C", "/usr/local", "-xzf", requiredDownloadedVersion.TarPath); err != nil {
+			color.Red("❌ Extraction failed: %s", err.Error())
+			os.Exit(1)
+		}
+
+		fmt.Println()
+		color.Green("✅ Switched to Go %s!", requestedVersion)
+
 		pathVars := os.Getenv("PATH")
-		pathIncluded := slices.Contains(strings.Split(string(pathVars), ":"), "/usr/local/go/bin")
+		pathIncluded := slices.Contains(strings.Split(pathVars, ":"), "/usr/local/go/bin")
 
 		if !pathIncluded {
-			color.Red("No Path variable found. Execute the command below.")
-			color.Cyan("export PATH=$PATH:/usr/local/go/bin")
+			color.Yellow("⚠️  Don't forget to update your PATH!")
+			fmt.Println()
+			color.White("  Add this to your shell config (~/.bashrc, ~/.zshrc, etc.):")
+			color.Cyan("  export PATH=$PATH:/usr/local/go/bin")
+		} else {
+			fmt.Println()
+			color.Green("🎉 Ready to code! Run 'go version' to verify")
 		}
+		fmt.Println()
 	},
 }
 

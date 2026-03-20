@@ -5,40 +5,82 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"strings"
-
-	"github.com/fatih/color"
+	"path/filepath"
+	"regexp"
 )
 
-// Fetches current golang version from CMD
-// It uses `go version` command.
+// goVersionRegex parses the output of "go version" command.
+var goVersionRegex = regexp.MustCompile(`go version go(\S+)`)
+
+// GetCurrentGolangVersion returns the currently active Go version.
+// It first tries the system Go in PATH, then falls back to /usr/local/go/bin/go.
 func GetCurrentGolangVersion() (*string, error) {
-	res, err := exec.Command("go", "version").Output()
-	if err != nil {
-		fmt.Println(err)
-		return nil, fmt.Errorf("failed to fetch go version")
+	var res []byte
+	var err error
+
+	res, err = exec.Command("go", "version").Output()
+	if err == nil {
+		return parseGoVersionOutput(string(res))
 	}
 
-	return &strings.Split(string(res), " ")[2], nil
+	goBinary := filepath.Join("/usr", "local", "go", "bin", "go")
+	if _, statErr := os.Stat(goBinary); statErr == nil {
+		res, err = exec.Command(goBinary, "version").Output()
+		if err == nil {
+			return parseGoVersionOutput(string(res))
+		}
+	}
+
+	return nil, fmt.Errorf("go is not installed or not found in PATH")
 }
 
-func PurgeCurrentGolangInstallation() {
+// parseGoVersionOutput extracts the version string from "go version" output.
+func parseGoVersionOutput(output string) (*string, error) {
+	matches := goVersionRegex.FindStringSubmatch(output)
+	if len(matches) < 2 {
+		return nil, fmt.Errorf("failed to parse go version output")
+	}
+
+	version := matches[1]
+	return &version, nil
+}
+
+// IsGoInstalledAtSystemPath checks if Go is installed at /usr/local/go.
+func IsGoInstalledAtSystemPath() bool {
+	goBinary := filepath.Join("/usr", "local", "go", "bin", "go")
+	if _, err := os.Stat(goBinary); err == nil {
+		return true
+	}
+	return false
+}
+
+// PurgeCurrentGolangInstallation removes the Go installation from /usr/local/go.
+// This is called before installing a new version to ensure a clean state.
+func PurgeCurrentGolangInstallation() error {
 	pathToDelete := path.Join("/usr", "local", "go")
 
-	if _, err := os.ReadDir(pathToDelete); os.IsNotExist(err) {
-		return
+	entries, err := os.ReadDir(pathToDelete)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	if len(entries) == 0 {
+		return nil
 	}
 
 	version, err := GetCurrentGolangVersion()
 	if err != nil {
-		color.Red(err.Error())
-		os.Exit(1)
+		fmt.Printf("Warning: could not determine current Go version: %v\n", err)
+	} else {
+		fmt.Printf("Removing Go version %s\n", *version)
 	}
 
 	if err := os.RemoveAll(pathToDelete); err != nil {
-		color.Red(fmt.Sprintf("IO Error: Failed to purge current golang binary at path: %s", pathToDelete))
-		os.Exit(1)
+		return fmt.Errorf("failed to purge current golang binary at path %s: %w", pathToDelete, err)
 	}
 
-	color.Green(fmt.Sprintf("Successfully removed current golang version %s", *version))
+	return nil
 }

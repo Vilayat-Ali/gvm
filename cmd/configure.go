@@ -22,6 +22,7 @@ THE SOFTWARE.
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/fatih/color"
@@ -29,36 +30,44 @@ import (
 	"github.com/vilayat-ali/gvm/internal"
 )
 
-// configureCmd represents the configure command
 var configureCmd = &cobra.Command{
 	Use:   "configure",
-	Short: "Set up initial configuration for gvm (Go Version Manager)",
-	Long: `The configure command initializes gvm by creating the necessary configuration files and directory structure.
+	Short: "setup gvm for the first time ✨",
+	Long: `╔══════════════════════════════════════════════════════════════╗
+║                      First time? Let's fix that!                  ║
+╚══════════════════════════════════════════════════════════════╝
 
-This command performs the following actions:
-1. Creates a configuration file at ~/.config/gvm/config.json
-2. Sets up the required directories for storing Go versions at /usr/local/gvm/go-versions/
+This wizard sets up everything gvm needs:
+  📁 Config: ~/.config/gvm/config.json
+  📦 Versions: /usr/local/gvm/go-versions/
 
-If configuration already exists, this command will inform you that gvm is already set up.
+Just run 'gvm configure' and we'll handle the rest.
 
-Examples:
-  gvm configure      # Initializes gvm with default settings
-  gvm configure -h   # Shows help information for this command`,
+Pro tip: You only need to run this once!`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if !internal.ConfigExists() {
-			color.Blue("Setting up gvm configuration...")
-			if err := internal.SetupConfig(); err != nil {
-				color.Red("Failed to configure gvm: %s", err.Error())
-				os.Exit(1)
-			}
-			color.Green("✓ gvm configured successfully!")
-			color.Cyan("\nNext steps:")
-			color.Cyan("  • Run 'gvm list' to see available Go versions")
-			color.Cyan("  • Run 'gvm download <version>' to install a Go version")
-			color.Cyan("  • Run 'gvm use <version>' to switch to a specific Go version")
-		} else {
-			color.Yellow("gvm is already configured. Run 'gvm --help' to see available commands.")
+		if internal.ConfigExists() {
+			color.Green("✅ gvm is already configured!")
+			color.Cyan("   Run 'gvm --help' to see what you can do")
+			return
 		}
+
+		fmt.Println()
+		color.Cyan("🔧 Setting up gvm for the first time...")
+		fmt.Println()
+
+		if err := internal.SetupConfig(); err != nil {
+			color.Red("❌ Setup failed: %s", err.Error())
+			os.Exit(1)
+		}
+
+		color.Green("✨ Boom! gvm is ready to roll!")
+		fmt.Println()
+		color.Yellow("Next steps:")
+		color.White("  1. %s gvm list%s - check available Go versions", color.BoldString("run"), color.ResetString(""))
+		color.White("  2. %s gvm download 1.22.0%s - grab a version", color.BoldString("run"), color.ResetString(""))
+		color.White("  3. %s gvm use 1.22.0%s - start coding!", color.BoldString("run"), color.ResetString(""))
+		fmt.Println()
+		color.Green("Happy coding! 🎉")
 	},
 }
 

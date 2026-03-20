@@ -31,15 +31,17 @@ import (
 	"github.com/vilayat-ali/gvm/internal"
 )
 
-// downloadCmd represents the download command
 var downloadCmd = &cobra.Command{
-	Use:   "download",
-	Short: "Download a Go version",
-	Long: `Download a specific version of Go.
+	Use:   "download <version>",
+	Short: "download a Go version 📥",
+	Long: `Grab a Go version and save it for later use.
+
+Downloaded versions are stored locally so you can switch to them
+instantly without re-downloading.
 
 Examples:
-  gvm download --version 1.25.5
-  gvm download -g 1.25.5`,
+  gvm download 1.22.0    → download Go 1.22.0
+  gvm download latest    → download the newest version`,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		if !internal.ConfigExists() {
 			return fmt.Errorf("configuration not found. Please run 'gvm configure' first")
@@ -48,59 +50,66 @@ Examples:
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
-			color.Red("Arg Error: Expected positional arguement 'golang version'. Example gvm download 1.25.5")
+			color.Red("❌ Oops! You forgot the version")
+			color.Cyan("  Usage: gvm download <version>")
+			color.White("  Example: gvm download 1.22.0")
 			os.Exit(1)
 		}
 
 		requestedVersion := args[0]
 		if !internal.ValidateGoVersion(requestedVersion) {
-			color.Red(fmt.Sprintf("Input Error: Version '%s' is not a valid golang version", requestedVersion))
+			color.Red("❌ '%s' doesn't look like a valid Go version", requestedVersion)
+			color.Dim("  Go versions look like: 1.21.0, 1.22.0, 1.23.0-rc1")
 			os.Exit(1)
 		}
 
 		gvmConfig, err := internal.LoadConfig()
 		if err != nil {
-			color.Red(err.Error())
-			os.Exit(1)
-		}
-
-		if err != nil {
-			color.Red(err.Error())
+			color.Red("❌ Couldn't load config: %s", err.Error())
 			os.Exit(1)
 		}
 
 		var remoteVersion *internal.RemoteVersion
-		var remoteVersionIdx int = -1
 
-		for idx, rv := range gvmConfig.AvailableVersions {
-			if strings.Replace(rv.Version, "go", "", 1) == strings.TrimSpace(requestedVersion) {
+		for _, rv := range gvmConfig.AvailableVersions {
+			if internal.NormalizeVersion(rv.Version) == strings.TrimSpace(requestedVersion) {
 				remoteVersion = &rv
-				remoteVersionIdx = idx
+				break
 			}
 		}
 
-		if remoteVersion == nil || remoteVersionIdx == -1 {
-			color.Red(fmt.Sprintf("Download Error: Failed to download '%s'. Couldn't find in config available versions", requestedVersion))
+		if remoteVersion == nil {
+			color.Red("❌ Version %s not found in available versions", requestedVersion)
+			color.Cyan("  Run 'gvm list update' to refresh the list")
 			os.Exit(1)
 		}
 
-		color.Green(fmt.Sprintf("Downloading %s\n", requestedVersion))
+		fmt.Println()
+		color.Cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		color.Cyan("          📥 DOWNLOADING GO %s", strings.ToUpper(requestedVersion))
+		color.Cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println()
+
 		path, err := remoteVersion.Download()
 		if err != nil {
-			color.Red(err.Error())
+			color.Red("❌ Download failed: %s", err.Error())
 			os.Exit(1)
 		}
 
 		if err := gvmConfig.MarkVersionAsDownloaded(remoteVersion, *path); err != nil {
-			color.Red(err.Error())
+			color.Red("❌ Couldn't save to config: %s", err.Error())
 			os.Exit(1)
 		}
 
-		color.Green(fmt.Sprintf("\nGo version %s was downloaded and saved in %s", remoteVersion.Version, *path))
+		fmt.Println()
+		color.Green("✅ Download complete!")
+		color.White("  📍 Location: %s", *path)
+		fmt.Println()
+		color.Cyan("Next: Run 'gvm use %s' to start using it!", requestedVersion)
+		fmt.Println()
 	},
 }
 
 func init() {
-	downloadCmd.Flags().StringP("version", "g", "", "Go version to download (e.g., 1.25.5)")
 	rootCmd.AddCommand(downloadCmd)
 }

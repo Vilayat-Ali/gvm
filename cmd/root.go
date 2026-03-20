@@ -28,35 +28,37 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version = "1.2.0"
+const version = "2.0.0"
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "gvm",
-	Short: "Go Version Manager - Install and manage multiple Go versions",
-	Long: `GVM - Go Version Manager
+	Short: "gvm - switch between Go versions like a pro 🧑‍💻",
+	Long: `╔══════════════════════════════════════════════════════════════╗
+║                    gvm - Go Version Manager                    ║
+║          seamlessly switch between Go versions 🔄             ║
+╚══════════════════════════════════════════════════════════════╝
 
-A simple, powerful command-line tool for managing multiple Go versions on your system.
+GVM is your one-stop shop for managing multiple Go versions without
+breaking a sweat. No more manual installs, no more PATH wrestling.
 
-GVM allows you to:
-  • Install multiple versions of Go
-  • Switch between Go versions seamlessly
-  • Set default Go versions globally or per-project
-  • List available and installed Go versions
-  • Keep your system Go installation untouched
+Quick Start:
+  gvm configure          → setup gvm for the first time
+  gvm list               → see what Go versions are available
+  gvm download 1.22.0    → grab a Go version
+  gvm use 1.22.0         → start using it like a boss
 
-Examples:
-  gvm install 1.20.3        # Install a specific Go version
-  gvm use 1.19.8            # Switch to Go 1.19.8
-  gvm list                  # List all installed versions
-  gvm list-remote           # List all available versions
-  gvm default 1.20.3        # Set Go 1.20.3 as default
+Features:
+  ✨ Download any Go version instantly
+  🔀 Switch between versions on the fly
+  📋 Keep track of what's installed
+  🔒 Verified downloads with checksums
+  🚀 Lightweight and blazing fast
 
-Documentation: https://vilayat-ali.github.io/gvm
-Source Code:   https://github.com/vilayat-ali/gvm`,
+Made with 💜 for the Go community
+https://github.com/vilayat-ali/gvm`,
 	Version: version,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Show help if no arguments provided
 		if len(args) == 0 {
 			if err := cmd.Help(); err != nil {
 				fmt.Println(err)
@@ -66,8 +68,6 @@ Source Code:   https://github.com/vilayat-ali/gvm`,
 	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
@@ -77,12 +77,11 @@ func Execute() {
 }
 
 func init() {
-	// Global flags
 	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "verbose output")
 	rootCmd.PersistentFlags().Bool("debug", false, "enable debug mode")
 
-	// Set up version template
-	rootCmd.SetVersionTemplate(`GVM - Go Version Manager v{{.Version}}
-Built with ❤️ for the Go community
+	rootCmd.SetVersionTemplate(`gvm v{{.Version}} 🚀
+The ultimate Go version manager
+Run 'gvm --help' to get started
 `)
 }
