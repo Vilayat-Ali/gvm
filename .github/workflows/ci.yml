@@ -126,19 +126,24 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           shim="$HOME/.local/share/gvm/bin"
 
+          # Probe from a neutral directory: inside the checkout, go.mod
+          # requires a newer Go, so GOTOOLCHAIN=auto would make the older
+          # toolchain download and re-exec a different one.
+          probe() { (cd "$RUNNER_TEMP" && "$shim/go" version); }
+
           gvm configure
           gvm use 1.23
-          "$shim/go" version | grep -q 'go1.23'
+          probe | grep -q 'go1.23'
 
           gvm use 1.24
-          "$shim/go" version | grep -q 'go1.24'
+          probe | grep -q 'go1.24'
 
           # `list` writes versions to stdout and narration to stderr.
           gvm list 2>/dev/null | grep -q '1.24'
           case "$(gvm list --current 2>/dev/null)" in 1.24.*) ;; *) exit 1;; esac
 
           gvm remove 1.23 --purge
-          PATH="$shim:$PATH" gvm doctor
+          (cd "$RUNNER_TEMP" && PATH="$shim:$PATH" gvm doctor)
 
       - name: Verify no system directory was modified
         run: |

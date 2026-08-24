@@ -24,6 +24,9 @@ type Diagnosis struct {
 	Shadowed   bool
 	ShadowedBy string
 	GoRootEnv  string
+	Toolchain  string
+	ModuleFile string
+	ModuleGo   string
 	Installed  int
 	Problems   []string
 	Warnings   []string
@@ -63,6 +66,38 @@ func ActiveGoVersion() string {
 		return ""
 	}
 	return goVersionOf(binary)
+}
+
+func findGoMod(start string) string {
+	dir := filepath.Clean(start)
+	for {
+		candidate := filepath.Join(dir, "go.mod")
+		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+func goDirectiveOf(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	for _, raw := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(raw)
+		if len(fields) < 2 || fields[0] != "go" {
+			continue
+		}
+		if canonical, err := CanonicalVersion(fields[1]); err == nil {
+			return canonical
+		}
+	}
+	return ""
 }
 
 func Diagnose() Diagnosis {
@@ -124,7 +159,39 @@ func Diagnose() Diagnosis {
 		d.Warnings = append(d.Warnings, warning)
 	}
 
+	d.Toolchain = os.Getenv("GOTOOLCHAIN")
+	if d.Toolchain == "" {
+		d.Toolchain = "auto"
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if mod := findGoMod(cwd); mod != "" {
+			d.ModuleFile = mod
+			d.ModuleGo = goDirectiveOf(mod)
+		}
+	}
+	if switchesToolchain(d.Current, d.ModuleGo, d.Toolchain) {
+		d.Warnings = append(d.Warnings, fmt.Sprintf(
+			"%s requires Go %s, which is newer than the active %s — Go will download and run %s here instead (GOTOOLCHAIN=%s)",
+			d.ModuleFile, DisplayVersion(d.ModuleGo), DisplayVersion(d.Current), DisplayVersion(d.ModuleGo), d.Toolchain))
+		d.Hints = append(d.Hints, fmt.Sprintf("run `gvm use %s`, or set GOTOOLCHAIN=local to make Go fail instead of switching", DisplayVersion(d.ModuleGo)))
+	}
+
 	return d
+}
+
+func switchesToolchain(active, moduleGo, toolchain string) bool {
+	if active == "" || moduleGo == "" || toolchain == "local" {
+		return false
+	}
+	current, err := ParseVersion(active)
+	if err != nil {
+		return false
+	}
+	required, err := ParseVersion(moduleGo)
+	if err != nil {
+		return false
+	}
+	return CompareVersions(current, required) < 0
 }
 
 func ShellExportLine(shimDir string) string {

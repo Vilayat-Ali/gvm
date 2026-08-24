@@ -22,7 +22,7 @@
 - **Verified downloads.** Every archive is checked against the SHA-256 published by go.dev, hashed while it streams to disk.
 - **Atomic and crash-safe.** Downloads, installs, config writes and version switches all land via `rename(2)`. An interrupted command never leaves you without a working Go.
 - **Hardened extraction.** Path traversal, absolute paths, escaping symlinks and device nodes are all rejected.
-- **`gvm doctor`.** Tells you exactly what is wrong with your PATH and how to fix it.
+- **`gvm doctor`.** Explains PATH problems, shadowing, a pinned `GOROOT`, and Go's automatic toolchain switching — then tells you how to fix each one.
 
 ---
 
@@ -93,7 +93,7 @@ gvm use 1.23.4
 | `gvm download <version>` | Download and unpack a version without activating it |
 | `gvm use <version>` | Activate a version, installing it first if needed |
 | `gvm remove <version>` | Remove an installed version (`--purge` also drops the cached archive) |
-| `gvm doctor` | Diagnose PATH, shadowing and `GOROOT` problems |
+| `gvm doctor` | Diagnose PATH, shadowing, `GOROOT` and toolchain-switching problems |
 | `gvm env` | Print the shell line that puts gvm on your PATH |
 
 ### Version arguments
@@ -207,6 +207,9 @@ No. gvm installs into your home directory. Running it with `sudo` is refused unl
 
 **Will it delete my existing Go installation?**
 No. gvm never writes to or deletes anything outside its own root directory. If your distro's Go at `/usr/local/go` comes first on your PATH, `gvm doctor` will point that out so you can reorder it.
+
+**I ran `gvm use 1.23`, but `go version` reports something else.**
+Go switches toolchains on its own. If the `go.mod` in your current directory requires a newer Go than the one you activated, Go downloads that version and runs it instead — this is Go's default `GOTOOLCHAIN=auto` behaviour, not gvm. `gvm doctor` detects this and names the `go.mod` responsible. Either `gvm use` the version the module wants, or set `GOTOOLCHAIN=local` to make Go report an error instead of switching.
 
 **How fast is switching?**
 About 10 ms for an already-installed version — it is a single symlink rename.

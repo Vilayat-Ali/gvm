@@ -24,6 +24,9 @@ var doctorCmd = &cobra.Command{
 		} else {
 			plain("    active       none")
 		}
+		if d.ModuleFile != "" && d.ModuleGo != "" {
+			plain("    go.mod       %s (requires %s)", d.ModuleFile, internal.DisplayVersion(d.ModuleGo))
+		}
 		if d.ResolvedGo != "" {
 			plain("    go on PATH   %s (%s)", d.ResolvedGo, internal.DisplayVersion(d.ActiveGo))
 		} else {
