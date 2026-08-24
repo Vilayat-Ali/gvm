@@ -1,80 +1,73 @@
-/*
-Copyright © 2025 Syed Vilayat Ali Rizvi
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-*/
 package cmd
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/vilayat-ali/gvm/internal"
 )
 
 var configureCmd = &cobra.Command{
 	Use:   "configure",
-	Short: "setup gvm for the first time ✨",
-	Long: `╔══════════════════════════════════════════════════════════════╗
-║                      First time? Let's fix that!                  ║
-╚══════════════════════════════════════════════════════════════╝
+	Short: "Prepare the gvm directory and fetch the version catalog",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		force, _ := cmd.Flags().GetBool("force")
 
-This wizard sets up everything gvm needs:
-  📁 Config: ~/.config/gvm/config.json
-  📦 Versions: /usr/local/gvm/go-versions/
+		if internal.ConfigExists() && !force {
+			root, err := internal.Root()
+			if err != nil {
+				return err
+			}
+			success("gvm is already configured")
+			hint("root: %s", root)
+			hint("run `gvm doctor` to verify your shell setup")
+			return nil
+		}
 
-Just run 'gvm configure' and we'll handle the rest.
+		ctx, cancel := signalContext()
+		defer cancel()
 
-Pro tip: You only need to run this once!`,
-	Run: func(cmd *cobra.Command, args []string) {
-		if internal.ConfigExists() {
-			color.Green("✅ gvm is already configured!")
-			color.Cyan("   Run 'gvm --help' to see what you can do")
-			return
+		if err := internal.EnsureLayout(); err != nil {
+			return err
+		}
+
+		config, err := internal.NewConfig()
+		if err != nil {
+			return err
+		}
+		if err := config.Save(); err != nil {
+			return err
+		}
+
+		heading("Configuring gvm")
+		hint("fetching the Go release catalog...")
+		if err := config.Refresh(ctx); err != nil {
+			return err
+		}
+
+		root, err := internal.Root()
+		if err != nil {
+			return err
+		}
+		shims, err := internal.ShimDir()
+		if err != nil {
+			return err
 		}
 
 		fmt.Println()
-		color.Cyan("🔧 Setting up gvm for the first time...")
+		success("ready — %d releases available for your platform", len(config.AvailableVersions))
+		hint("toolchains live in %s", root)
 		fmt.Println()
-
-		if err := internal.SetupConfig(); err != nil {
-			color.Red("❌ Setup failed: %s", err.Error())
-			os.Exit(1)
-		}
-
-		bold := color.New(color.Bold).SprintFunc()
-
-		color.Green("✨ Boom! gvm is ready to roll!")
+		accent(cyan, "  Add this to your shell profile:")
+		accent(bold, "    %s", internal.ShellExportLine(shims))
 		fmt.Println()
-		color.Yellow("Next steps:")
-		white := color.New(color.FgWhite)
-
-		white.Printf("  1. %s gvm list - check available Go versions\n", bold("run"))
-		white.Printf("  2. %s gvm download 1.22.0 - grab a version\n", bold("run"))
-		white.Printf("  3. %s gvm use 1.22.0 - start coding!\n", bold("run"))
-		fmt.Println()
-		color.Green("Happy coding! 🎉")
+		hint("then run `gvm use latest`")
+		return nil
 	},
 }
 
 func init() {
+	configureCmd.Flags().Bool("force", false, "rebuild the configuration even if it already exists")
 	rootCmd.AddCommand(configureCmd)
 }

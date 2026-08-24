@@ -1,78 +1,118 @@
-name: Go CI - Lint & Test
+name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
-env:
-  PRIMARY_GO_VERSION: '1.25'
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
-    name: Test (Go ${{ matrix.go-version }})
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        go-version: ['1.25']
-    
-    steps:
-      - name: Checkout code
-        # Correct version tag
-        uses: actions/checkout@v4
+        os: [ubuntu-latest, macos-latest]
 
-      - name: Set up Go
-        # Correct version tag. Caching is enabled by default[citation:2]
-        uses: actions/setup-go@v5
+    steps:
+      - uses: actions/checkout@v4
+
+      # go-version-file keeps the toolchain in lockstep with go.mod,
+      # so changing the Go version means editing go.mod and nothing else.
+      - uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go-version }}
-          # 'cache: true' is the default[citation:2]
+          go-version-file: go.mod
           cache: true
 
-      - name: Run tests
-        run: make test
+      - name: Verify toolchain matches go.mod
+        run: make verify-go
 
-      - name: Run tests with coverage (Optional)
+      - name: Test
+        run: make test-race
+
+      - name: Coverage
         run: make test-coverage
 
-  lint-and-quality:
-    name: Lint & Code Quality
+  quality:
+    name: Lint & Build
     runs-on: ubuntu-latest
-    needs: test
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.PRIMARY_GO_VERSION }}
+          go-version-file: go.mod
+          cache: true
 
-      - name: Check formatting (gofmt)
-        run: |
-          make fmt
-          # Check if any files were changed
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "❌ Some Go files are not formatted. Please run 'make fmt'."
-            git diff
-            exit 1
-          fi
+      - name: Check formatting
+        run: make fmt-check
 
-      - name: Run linter
-        run: make lint
-
-      - name: Run go vet
+      - name: Vet
         run: make vet
 
-      - name: Check go module tidiness
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+      - name: Check module tidiness
         run: |
           make deps
-          # Fail if go.mod or go.sum changed after 'go mod tidy'
-          git diff --exit-code go.mod go.sum || (echo "❌ go.mod/go.sum are out of sync. Run 'make deps'." && exit 1)
+          git diff --exit-code go.mod go.sum \
+            || (echo "go.mod/go.sum are out of sync — run 'make deps'" && exit 1)
 
-      - name: Build (smoke test)
+      - name: Build all platforms
+        run: make build-all
+
+      - name: Smoke test
         run: |
           make build
+          ./bin/gvm --version
           ./bin/gvm --help
+          ./bin/gvm doctor || true
+
+  installer:
+    name: Installer script
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Shell syntax and lint
+        run: |
+          bash -n scripts/install.sh
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck scripts/install.sh
+
+      - name: Install from a locally built release
+        run: |
+          make release
+          export GVM_BASE_URL="file://$PWD/dist/releases"
+          export GVM_VERSION="$(git describe --tags --always --dirty)"
+          bash scripts/install.sh
+          "$HOME/.local/bin/gvm" --version
+
+      - name: End-to-end version switch
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          gvm configure
+          gvm use 1.23
+          gvm use 1.24
+          "$HOME/.local/share/gvm/bin/go" version | grep -q 'go1.24'
+          gvm list
+          test -x /usr/local/go/bin/go && echo "system Go left untouched"

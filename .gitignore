@@ -1,6 +1,8 @@
 # build binaries and artifacts
 bin
 dist
+docs
+tools
 *.tar.gz
 
 # Binaries for programs and plugins

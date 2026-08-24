@@ -1,254 +1,232 @@
 package internal
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
 const (
-	AppVersion    = "v2.0.0"
-	AppName       = "gvm"
-	ConfigDirName = "gvm"
-	ConfigFile    = "config.json"
-	GoVersionsDir = "go-versions"
+	configSchemaVersion = 3
+	catalogTTL          = 24 * time.Hour
+	maxStoredVersions   = 60
 )
 
-// Config represents the gvm configuration stored in ~/.config/gvm/config.json.
-// It tracks available and downloaded Go versions along with metadata.
 type Config struct {
-	Version            string                     `json:"version"`
-	DownloadPath       string                     `json:"download_path"`
-	LastRemoteFetch    int64                      `json:"last_remote_fetch"`
-	AvailableVersions  []RemoteVersion            `json:"available_versions"`
-	DownloadedVersions map[string]DownloadVersion `json:"downloaded_versions"`
+	SchemaVersion     int             `json:"schema_version"`
+	Root              string          `json:"root"`
+	LastRemoteFetch   int64           `json:"last_remote_fetch"`
+	AvailableVersions []RemoteVersion `json:"available_versions"`
 }
 
-// ConfigDir returns the configuration directory path (~/.config/gvm).
-func ConfigDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %w", err)
-	}
-	return filepath.Join(home, ".config", ConfigDirName), nil
-}
-
-// ConfigFilePath returns the full path to the config.json file.
-func ConfigFilePath() (string, error) {
-	configDir, err := ConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(configDir, ConfigFile), nil
-}
-
-// GoDownloadDir returns the directory where Go version tarballs are stored.
-// Default: /usr/local/gvm/go-versions/
-func GoDownloadDir() (*string, error) {
-	systemPath := filepath.Join("/usr/local", AppName, GoVersionsDir)
-	if err := os.MkdirAll(systemPath, 0755); err == nil {
-		return &systemPath, nil
-	}
-
-	return nil, fmt.Errorf("root user permission required. Run again with sudo prefix")
-}
-
-// ensureDirectories creates all necessary directories for gvm to function.
-func ensureDirectories() error {
-	configDir, err := ConfigDir()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-
-	goDir, err := GoDownloadDir()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(*goDir, 0755); err != nil {
-		return fmt.Errorf("failed to create go versions directory: %w", err)
-	}
-
-	return nil
-}
-
-// SetupConfig initializes gvm's configuration for first-time use.
-// Creates directories, fetches available versions, and saves the config.
-func SetupConfig() error {
-	if err := ensureDirectories(); err != nil {
-		return err
-	}
-
-	remoteVersions, err := FetchGoVersionsFromGoGithubRelease()
-	if err != nil {
-		return fmt.Errorf("failed to fetch remote versions: %w", err)
-	}
-
-	goDir, err := GoDownloadDir()
-	if err != nil {
-		return err
-	}
-
-	config := &Config{
-		Version:            AppVersion,
-		DownloadPath:       *goDir,
-		LastRemoteFetch:    time.Now().UnixMilli(),
-		AvailableVersions:  remoteVersions,
-		DownloadedVersions: make(map[string]DownloadVersion),
-	}
-
-	return config.Save()
-}
-
-// ConfigExists checks if gvm has been configured (config file exists).
 func ConfigExists() bool {
-	configPath, err := ConfigFilePath()
+	path, err := ConfigFilePath()
 	if err != nil {
 		return false
 	}
-	_, err = os.Stat(configPath)
-	return err == nil
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
 }
 
-// LoadConfig reads and parses the gvm configuration file.
 func LoadConfig() (*Config, error) {
-	configPath, err := ConfigFilePath()
+	path, err := ConfigFilePath()
 	if err != nil {
 		return nil, err
 	}
 
-	file, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w. Please run `gvm configure` first", err)
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("gvm is not configured yet. Run `gvm configure` first")
+		}
+		return nil, fmt.Errorf("cannot read %s: %w", path, err)
 	}
 
 	var config Config
-	if err := json.Unmarshal(file, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("%s is corrupted, run `gvm configure --force` to rebuild it: %w", path, err)
 	}
 
+	if config.SchemaVersion != configSchemaVersion {
+		config.SchemaVersion = configSchemaVersion
+		config.AvailableVersions = nil
+		config.LastRemoteFetch = 0
+	}
 	return &config, nil
 }
 
-// GetDownloadedVersions returns a list of versions that have been downloaded.
-func (c *Config) GetDownloadedVersions() *[]DownloadVersion {
-	downloadedVersions := make([]DownloadVersion, 0)
-
-	for _, version := range c.AvailableVersions {
-		if downloadedVersion, ok := c.DownloadedVersions[version.Version]; ok {
-			downloadedVersions = append(downloadedVersions, downloadedVersion)
-		}
+func NewConfig() (*Config, error) {
+	root, err := Root()
+	if err != nil {
+		return nil, err
 	}
-
-	return &downloadedVersions
+	return &Config{SchemaVersion: configSchemaVersion, Root: root}, nil
 }
 
-// GetLTSVersion returns the first non-RC version as the LTS candidate.
-func (c *Config) GetLTSVersion() (*string, error) {
-	for _, remote := range c.AvailableVersions {
-		if !strings.Contains(remote.Version, "rc") {
-			return &remote.Version, nil
-		}
+func LoadOrInitConfig() (*Config, error) {
+	if ConfigExists() {
+		return LoadConfig()
 	}
-
-	return nil, fmt.Errorf("config error: failed to fetch LTS version")
+	return NewConfig()
 }
 
-// RemoveDownloadedVersion removes a downloaded Go version from the system.
-// Deletes the tarball file and updates the config.
-func (c *Config) RemoveDownloadedVersion(version string) error {
-	versionFmtToBeDeleted := fmt.Sprintf("go%s", version)
-
-	versionToBeDeleted, exists := c.DownloadedVersions[versionFmtToBeDeleted]
-	if !exists {
-		return fmt.Errorf("go version %s is not downloaded", versionFmtToBeDeleted)
-	}
-
-	if err := os.Remove(versionToBeDeleted.TarPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to delete the downloaded tar file of %s: %w", versionFmtToBeDeleted, err)
-	}
-
-	delete(c.DownloadedVersions, versionFmtToBeDeleted)
-
-	return c.Save()
-}
-
-// Save writes the current config to ~/.config/gvm/config.json.
 func (c *Config) Save() error {
-	configPath, err := ConfigFilePath()
+	path, err := ConfigFilePath()
 	if err != nil {
 		return err
 	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("cannot create %s: %w", dir, err)
+	}
+
+	root, err := Root()
+	if err != nil {
+		return err
+	}
+	c.SchemaVersion = configSchemaVersion
+	c.Root = root
 
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+		return fmt.Errorf("cannot encode config: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+	tmp, err := os.CreateTemp(dir, ".config-*.json")
+	if err != nil {
+		return fmt.Errorf("cannot create a temporary config file: %w", err)
 	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
 
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("cannot write config: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("cannot flush config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("cannot close config: %w", err)
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		return fmt.Errorf("cannot set config permissions: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("cannot install config at %s: %w", path, err)
+	}
 	return nil
 }
 
-// MarkVersionAsDownloaded records that a version has been downloaded.
-// Stores the tarball path in the config for future reference.
-func (c *Config) MarkVersionAsDownloaded(remoteVersion *RemoteVersion, tarballPath string) error {
-	if remoteVersion == nil {
-		return fmt.Errorf("invalid remote version provided")
+func (c *Config) IsStale() bool {
+	if len(c.AvailableVersions) == 0 || c.LastRemoteFetch <= 0 {
+		return true
 	}
+	fetched := time.UnixMilli(c.LastRemoteFetch)
+	return time.Since(fetched) > catalogTTL
+}
 
-	if _, exists := c.DownloadedVersions[remoteVersion.Version]; exists {
-		return nil
+func (c *Config) Refresh(ctx context.Context) error {
+	versions, err := FetchRemoteVersions(ctx)
+	if err != nil {
+		return err
 	}
-
-	c.DownloadedVersions[remoteVersion.Version] = DownloadVersion{
-		Version: remoteVersion.Version,
-		TarPath: tarballPath,
+	if len(versions) > maxStoredVersions {
+		versions = versions[:maxStoredVersions]
 	}
-
+	c.AvailableVersions = versions
+	c.LastRemoteFetch = time.Now().UnixMilli()
 	return c.Save()
 }
 
-// UpdateAvailableVersions fetches the latest Go versions from GitHub
-// and updates the config with new releases.
-func (c *Config) UpdateAvailableVersions() error {
-	newVersions, err := FetchGoVersionsFromGoGithubRelease()
+func (c *Config) LatestStable() (*RemoteVersion, error) {
+	for i := range c.AvailableVersions {
+		parsed, err := ParseVersion(c.AvailableVersions[i].Version)
+		if err != nil {
+			continue
+		}
+		if c.AvailableVersions[i].Stable && !parsed.IsPrerelease() {
+			return &c.AvailableVersions[i], nil
+		}
+	}
+	return nil, fmt.Errorf("no stable Go release found. Run `gvm list update`")
+}
+
+func lookupIn(versions []RemoteVersion, input string) *RemoteVersion {
+	canonical, err := CanonicalVersion(input)
 	if err != nil {
-		return fmt.Errorf("failed to fetch new versions: %w", err)
+		return nil
 	}
-
-	limit := 10
-	if len(newVersions) > limit {
-		newVersions = newVersions[:limit]
-	}
-
-	existingSet := make(map[string]bool)
-	for _, v := range c.AvailableVersions {
-		existingSet[v.Version] = true
-	}
-
-	var latestVersions []RemoteVersion
-	for _, v := range newVersions {
-		if !existingSet[v.Version] {
-			latestVersions = append(latestVersions, v)
+	for i := range versions {
+		if versions[i].Version == canonical {
+			return &versions[i]
 		}
 	}
 
-	for _, v := range c.AvailableVersions {
-		if len(latestVersions) >= limit {
-			break
-		}
-		latestVersions = append(latestVersions, v)
+	requested, err := ParseVersion(canonical)
+	if err != nil || requested.Patch != 0 || requested.IsPrerelease() {
+		return nil
 	}
 
+	var best *RemoteVersion
+	var bestParsed ParsedVersion
+	for i := range versions {
+		candidate, err := ParseVersion(versions[i].Version)
+		if err != nil || candidate.IsPrerelease() {
+			continue
+		}
+		if candidate.Major != requested.Major || candidate.Minor != requested.Minor {
+			continue
+		}
+		if best == nil || CompareVersions(candidate, bestParsed) > 0 {
+			best = &versions[i]
+			bestParsed = candidate
+		}
+	}
+	return best
+}
+
+func (c *Config) ResolveVersion(ctx context.Context, input string) (*RemoteVersion, error) {
+	if input == LatestAlias {
+		if c.IsStale() {
+			if err := c.Refresh(ctx); err != nil && len(c.AvailableVersions) == 0 {
+				return nil, err
+			}
+		}
+		return c.LatestStable()
+	}
+
+	if _, err := CanonicalVersion(input); err != nil {
+		return nil, err
+	}
+
+	if found := lookupIn(c.AvailableVersions, input); found != nil {
+		return found, nil
+	}
+
+	// The stored catalog only keeps recent releases, so fall back to the
+	// complete published index before declaring a version unavailable.
+	all, err := FetchRemoteVersions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("Go %s is not in the local catalog and go.dev could not be reached: %w", DisplayVersion(input), err)
+	}
+
+	stored := all
+	if len(stored) > maxStoredVersions {
+		stored = stored[:maxStoredVersions]
+	}
+	c.AvailableVersions = stored
 	c.LastRemoteFetch = time.Now().UnixMilli()
-	c.AvailableVersions = latestVersions
-	return c.Save()
+	_ = c.Save()
+
+	if found := lookupIn(all, input); found != nil {
+		return found, nil
+	}
+
+	goos, goarch := PlatformOSArch()
+	return nil, fmt.Errorf("Go %s is not published for %s/%s", DisplayVersion(input), goos, goarch)
 }
