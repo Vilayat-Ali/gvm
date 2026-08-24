@@ -46,7 +46,7 @@ func goVersionOf(binary string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, binary, "version").Output()
+	out, err := probeCommand(ctx, binary, "").Output()
 	if err != nil {
 		return ""
 	}

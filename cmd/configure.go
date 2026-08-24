@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/vilayat-ali/gvm/internal"
 )
@@ -55,13 +53,13 @@ var configureCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Println()
+		blank()
 		success("ready — %d releases available for your platform", len(config.AvailableVersions))
 		hint("toolchains live in %s", root)
-		fmt.Println()
+		blank()
 		accent(cyan, "  Add this to your shell profile:")
 		accent(bold, "    %s", internal.ShellExportLine(shims))
-		fmt.Println()
+		blank()
 		hint("then run `gvm use latest`")
 		return nil
 	},

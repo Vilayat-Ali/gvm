@@ -59,10 +59,12 @@ jobs:
       - name: Vet
         run: make vet
 
+      # .golangci.yml uses the v2 config schema, which needs
+      # golangci-lint-action v8 or newer (v6 installs golangci-lint v1.x).
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          version: v2.13.1
           args: --timeout=5m
 
       - name: Check module tidiness
@@ -107,12 +109,48 @@ jobs:
           bash scripts/install.sh
           "$HOME/.local/bin/gvm" --version
 
+      - name: Record the state of system directories
+        run: |
+          for dir in /usr/local/go /usr/local/bin /usr/bin; do
+            if [ -e "$dir" ]; then
+              find "$dir" -maxdepth 1 -printf '%p %s %m\n' | sort
+            else
+              echo "$dir absent"
+            fi
+          done > "$RUNNER_TEMP/system-before.txt"
+          wc -l < "$RUNNER_TEMP/system-before.txt"
+
       - name: End-to-end version switch
         run: |
+          set -x
           export PATH="$HOME/.local/bin:$PATH"
+          shim="$HOME/.local/share/gvm/bin"
+
           gvm configure
           gvm use 1.23
+          "$shim/go" version | grep -q 'go1.23'
+
           gvm use 1.24
-          "$HOME/.local/share/gvm/bin/go" version | grep -q 'go1.24'
-          gvm list
-          test -x /usr/local/go/bin/go && echo "system Go left untouched"
+          "$shim/go" version | grep -q 'go1.24'
+
+          # `list` writes versions to stdout and narration to stderr.
+          gvm list 2>/dev/null | grep -q '1.24'
+          case "$(gvm list --current 2>/dev/null)" in 1.24.*) ;; *) exit 1;; esac
+
+          gvm remove 1.23 --purge
+          PATH="$shim:$PATH" gvm doctor
+
+      - name: Verify no system directory was modified
+        run: |
+          for dir in /usr/local/go /usr/local/bin /usr/bin; do
+            if [ -e "$dir" ]; then
+              find "$dir" -maxdepth 1 -printf '%p %s %m\n' | sort
+            else
+              echo "$dir absent"
+            fi
+          done > "$RUNNER_TEMP/system-after.txt"
+          if ! diff -u "$RUNNER_TEMP/system-before.txt" "$RUNNER_TEMP/system-after.txt"; then
+            echo "gvm modified a system directory"
+            exit 1
+          fi
+          echo "system directories untouched"

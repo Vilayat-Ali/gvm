@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/vilayat-ali/gvm/internal"
 )
@@ -41,7 +39,7 @@ var downloadCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Println()
+		blank()
 		success("checksum verified and unpacked")
 		hint("location: %s", dir)
 		hint("run `gvm use %s` to activate it", internal.DisplayVersion(remote.Version))

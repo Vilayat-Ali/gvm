@@ -15,22 +15,22 @@ var doctorCmd = &cobra.Command{
 		d := internal.Diagnose()
 
 		heading("Environment")
-		fmt.Printf("    root         %s\n", d.Root)
-		fmt.Printf("    shims        %s\n", d.ShimDir)
-		fmt.Printf("    installed    %d version(s)\n", d.Installed)
+		plain("    root         %s", d.Root)
+		plain("    shims        %s", d.ShimDir)
+		plain("    installed    %d version(s)", d.Installed)
 
 		if d.CurrentErr == nil {
-			fmt.Printf("    active       %s\n", internal.DisplayVersion(d.Current))
+			plain("    active       %s", internal.DisplayVersion(d.Current))
 		} else {
-			fmt.Printf("    active       none\n")
+			plain("    active       none")
 		}
 		if d.ResolvedGo != "" {
-			fmt.Printf("    go on PATH   %s (%s)\n", d.ResolvedGo, internal.DisplayVersion(d.ActiveGo))
+			plain("    go on PATH   %s (%s)", d.ResolvedGo, internal.DisplayVersion(d.ActiveGo))
 		} else {
-			fmt.Printf("    go on PATH   not found\n")
+			plain("    go on PATH   not found")
 		}
 
-		fmt.Println()
+		blank()
 		for _, problem := range d.Problems {
 			accent(yellow, "  ! %s", problem)
 		}
@@ -41,13 +41,13 @@ var doctorCmd = &cobra.Command{
 			success("everything looks good")
 		}
 		if len(d.Hints) > 0 {
-			fmt.Println()
+			blank()
 			accent(cyan, "  Suggested fixes:")
 			for _, h := range d.Hints {
 				plain("    %s", h)
 			}
 		}
-		fmt.Println()
+		blank()
 
 		if !d.Healthy() {
 			return fmt.Errorf("%d problem(s) found", len(d.Problems))
@@ -66,10 +66,10 @@ var envCmd = &cobra.Command{
 			return err
 		}
 		if pathOnly, _ := cmd.Flags().GetBool("path"); pathOnly {
-			fmt.Println(shims)
+			out("%s", shims)
 			return nil
 		}
-		fmt.Println(internal.ShellExportLine(shims))
+		out("%s", internal.ShellExportLine(shims))
 		return nil
 	},
 }

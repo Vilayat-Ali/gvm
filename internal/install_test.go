@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -350,5 +351,39 @@ func TestRemoveResolvesPartialVersion(t *testing.T) {
 	}
 	if IsInstalled("go1.23.9") {
 		t.Error("go1.23.9 was not removed")
+	}
+}
+
+func TestProbeCommandIgnoresToolchainSwitching(t *testing.T) {
+	ctx := context.Background()
+	cmd := probeCommand(ctx, "/somewhere/bin/go", "/somewhere")
+
+	var sawToolchain, sawGoRoot bool
+	for _, entry := range cmd.Env {
+		if entry == "GOTOOLCHAIN=local" {
+			sawToolchain = true
+		}
+		if entry == "GOROOT=/somewhere" {
+			sawGoRoot = true
+		}
+	}
+	if !sawToolchain {
+		t.Error("probeCommand must set GOTOOLCHAIN=local, otherwise a go.mod in the working directory can make Go download another toolchain")
+	}
+	if !sawGoRoot {
+		t.Error("probeCommand must pin GOROOT to the toolchain being verified")
+	}
+	if cmd.Dir != "/somewhere" {
+		t.Errorf("probeCommand ran in %q, want the toolchain directory", cmd.Dir)
+	}
+
+	neutral := probeCommand(ctx, "/usr/bin/go", "")
+	if neutral.Dir != os.TempDir() {
+		t.Errorf("probeCommand with no GOROOT ran in %q, want a neutral directory", neutral.Dir)
+	}
+	for _, entry := range neutral.Env {
+		if strings.HasPrefix(entry, "GOROOT=") && entry != "GOROOT=" {
+			t.Errorf("probeCommand should not pin GOROOT when probing the PATH binary, got %q", entry)
+		}
 	}
 }

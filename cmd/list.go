@@ -41,7 +41,7 @@ func printCurrent() error {
 		hint("run `gvm doctor` for details")
 		return nil
 	}
-	fmt.Println(internal.DisplayVersion(current))
+	out("%s", internal.DisplayVersion(current))
 	return nil
 }
 
@@ -61,12 +61,12 @@ func printInstalled() error {
 	heading("Installed")
 	for _, version := range installed {
 		if version.Version == current {
-			accent(green, "  * %s", internal.DisplayVersion(version.Version))
+			outColor(green, "  * %s", internal.DisplayVersion(version.Version))
 			continue
 		}
-		fmt.Printf("    %s\n", internal.DisplayVersion(version.Version))
+		out("    %s", internal.DisplayVersion(version.Version))
 	}
-	fmt.Println()
+	blank()
 	hint("* = active   |   `gvm list --remote` shows downloadable versions")
 	return nil
 }
@@ -104,15 +104,15 @@ func printRemote() error {
 
 		switch {
 		case remote.Version == current:
-			accent(green, "  * %-12s active", display)
+			outColor(green, "  * %-12s active", display)
 		case latest != nil && remote.Version == latest.Version:
-			accent(magenta, "    %-12s latest stable", display)
+			outColor(magenta, "    %-12s latest stable", display)
 		case parsed.IsPrerelease():
-			accent(yellow, "    %-12s pre-release", display)
+			outColor(yellow, "    %-12s pre-release", display)
 		case internal.IsInstalled(remote.Version):
-			fmt.Printf("    %-12s installed\n", display)
+			out("    %-12s installed", display)
 		default:
-			fmt.Printf("    %s\n", display)
+			out("    %s", display)
 		}
 
 		shown++
@@ -122,7 +122,7 @@ func printRemote() error {
 	}
 
 	if remaining := len(config.AvailableVersions) - shown; remaining > 0 {
-		fmt.Println()
+		blank()
 		hint("... and %d older releases", remaining)
 	}
 	fmt.Println()

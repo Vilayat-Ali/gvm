@@ -22,22 +22,30 @@ var (
 	magenta = color.New(color.FgMagenta)
 )
 
+// Narration goes to stderr so that it stays in one stream and keeps its
+// order in CI logs. Only command results go to stdout, where they can be
+// piped into other tools.
+
 func heading(title string) {
-	fmt.Println()
-	fmt.Println(cyan.Sprint("  " + title))
-	fmt.Println(faint.Sprint("  " + strings.Repeat("-", len(title))))
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, cyan.Sprint("  "+title))
+	fmt.Fprintln(os.Stderr, faint.Sprint("  "+strings.Repeat("-", len(title))))
+}
+
+func blank() {
+	fmt.Fprintln(os.Stderr)
 }
 
 func plain(format string, args ...any) {
-	fmt.Println(fmt.Sprintf(format, args...))
+	fmt.Fprintln(os.Stderr, fmt.Sprintf(format, args...))
 }
 
 func accent(c *color.Color, format string, args ...any) {
-	fmt.Println(c.Sprintf(format, args...))
+	fmt.Fprintln(os.Stderr, c.Sprintf(format, args...))
 }
 
 func success(format string, args ...any) {
-	fmt.Println(green.Sprintf("  "+format, args...))
+	fmt.Fprintln(os.Stderr, green.Sprintf("  "+format, args...))
 }
 
 func warn(format string, args ...any) {
@@ -46,6 +54,14 @@ func warn(format string, args ...any) {
 
 func hint(format string, args ...any) {
 	fmt.Fprintln(os.Stderr, faint.Sprintf("  "+format, args...))
+}
+
+func out(format string, args ...any) {
+	fmt.Println(fmt.Sprintf(format, args...))
+}
+
+func outColor(c *color.Color, format string, args ...any) {
+	fmt.Println(c.Sprintf(format, args...))
 }
 
 func signalContext() (context.Context, context.CancelFunc) {

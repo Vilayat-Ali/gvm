@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/vilayat-ali/gvm/internal"
 )
@@ -38,7 +36,7 @@ var useCmd = &cobra.Command{
 			if _, err := internal.EnsureInstalled(ctx, remote, newProgress(remote.Size, "  downloading")); err != nil {
 				return err
 			}
-			fmt.Println()
+			blank()
 		}
 
 		if err := internal.Activate(remote.Version); err != nil {
@@ -49,13 +47,13 @@ var useCmd = &cobra.Command{
 
 		diagnosis := internal.Diagnose()
 		if !diagnosis.OnPath {
-			fmt.Println()
+			blank()
 			warn("%s is not on your PATH yet", diagnosis.ShimDir)
 			accent(bold, "    %s", internal.ShellExportLine(diagnosis.ShimDir))
 			return nil
 		}
 		if diagnosis.Shadowed {
-			fmt.Println()
+			blank()
 			warn("another Go in %s still takes priority — run `gvm doctor`", diagnosis.ShadowedBy)
 			return nil
 		}

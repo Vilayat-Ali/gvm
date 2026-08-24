@@ -156,12 +156,26 @@ func verifyGoRoot(dir string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binary, "version")
-	cmd.Env = append(os.Environ(), "GOROOT="+dir)
+	cmd := probeCommand(ctx, binary, dir)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("the extracted Go toolchain does not run (%s): %w", strings.TrimSpace(string(out)), err)
 	}
 	return nil
+}
+
+// GOTOOLCHAIN=local stops Go from downloading and re-execing a different
+// toolchain when the working directory has a go.mod requiring a newer one,
+// which would otherwise make this probe hang and report a false failure.
+func probeCommand(ctx context.Context, binary, dir string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, binary, "version")
+	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local", "GOFLAGS=")
+	if dir != "" {
+		cmd.Env = append(cmd.Env, "GOROOT="+dir)
+		cmd.Dir = dir
+	} else {
+		cmd.Dir = os.TempDir()
+	}
+	return cmd
 }
 
 func EnsureInstalled(ctx context.Context, rv *RemoteVersion, progress io.Writer) (string, error) {
