@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 Syed Vilayat Ali Rizvi
+Copyright © 2026 Syed Vilayat Ali Rizvi
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -25,63 +25,52 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	"github.com/vilayat-ali/gvm/internal"
 )
 
-const version = "2.0.0"
-
-// rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "gvm",
-	Short: "gvm - switch between Go versions like a pro 🧑‍💻",
-	Long: `╔══════════════════════════════════════════════════════════════╗
-║                    gvm - Go Version Manager                    ║
-║          seamlessly switch between Go versions 🔄             ║
-╚══════════════════════════════════════════════════════════════╝
+	Short: "Manage multiple Go toolchains",
+	Long: `gvm installs Go toolchains into your own home directory and switches
+between them by moving a single symlink. It never modifies system
+directories such as /usr/local/go, and every download is verified
+against the checksum published by go.dev.
 
-GVM is your one-stop shop for managing multiple Go versions without
-breaking a sweat. No more manual installs, no more PATH wrestling.
-
-Quick Start:
-  gvm configure          → setup gvm for the first time
-  gvm list               → see what Go versions are available
-  gvm download 1.22.0    → grab a Go version
-  gvm use 1.22.0         → start using it like a boss
-
-Features:
-  ✨ Download any Go version instantly
-  🔀 Switch between versions on the fly
-  📋 Keep track of what's installed
-  🔒 Verified downloads with checksums
-  🚀 Lightweight and blazing fast
-
-Made with 💜 for the Go community
-https://github.com/vilayat-ali/gvm`,
-	Version: version,
-	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) == 0 {
-			if err := cmd.Help(); err != nil {
-				fmt.Println(err)
-			}
-			os.Exit(0)
+Quick start:
+  gvm configure       prepare the gvm directory and version catalog
+  gvm use latest      install and activate the newest stable Go
+  gvm list            show what is installed
+  gvm doctor          check that your shell is wired up correctly`,
+	Version:       internal.AppVersion,
+	SilenceUsage:  true,
+	SilenceErrors: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return cmd.Help()
+	},
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if disable, _ := cmd.Flags().GetBool("no-color"); disable {
+			color.NoColor = true
 		}
+		if err := internal.GuardRoot(); err != nil {
+			return err
+		}
+		if warning := internal.RootWarning(); warning != "" {
+			warn("%s", warning)
+		}
+		return nil
 	},
 }
 
 func Execute() {
-	err := rootCmd.Execute()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "gvm: %v\n", err)
 		os.Exit(1)
 	}
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "verbose output")
-	rootCmd.PersistentFlags().Bool("debug", false, "enable debug mode")
-
-	rootCmd.SetVersionTemplate(`gvm v{{.Version}} 🚀
-The ultimate Go version manager
-Run 'gvm --help' to get started
-`)
+	rootCmd.SetVersionTemplate("gvm {{.Version}}\n")
+	rootCmd.PersistentFlags().Bool("no-color", false, "disable coloured output")
 }

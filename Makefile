@@ -1,275 +1,179 @@
-# GVM - Go Version Manager Makefile
+# GVM - Go Version Manager
 # Copyright © 2025 Syed Vilayat Ali Rizvi
 
-.PHONY: all build install uninstall clean test fmt lint vet vendor help
+.PHONY: all build run build-all build-linux build-darwin install uninstall \
+        release test test-race test-coverage fmt fmt-check lint vet check \
+        clean clean-setup deps verify-go tools docs help
 
-# Variables
-APP_NAME := gvm
-VERSION := $(shell git describe --tags --always 2>/dev/null || echo "v1.0.0")
-BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
-GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-GO ?= go
-GOFMT ?= gofmt
-GOLINT ?= golint
-GOOS ?= $(shell go env GOOS 2>/dev/null || echo "linux")
-GOARCH ?= $(shell go env GOARCH 2>/dev/null || echo "amd64")
+APP_NAME   := gvm
+MODULE     := github.com/vilayat-ali/gvm
+VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.0.0-dev")
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_TIME ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+# The Go toolchain version is declared once, in go.mod. Change it there and
+# the Makefile, CI and `make verify-go` all follow automatically.
+GO_VERSION := $(shell awk '/^go[[:space:]]/ {print $$2; exit}' go.mod)
+
+GO          ?= go
+GOOS        ?= $(shell $(GO) env GOOS)
+GOARCH      ?= $(shell $(GO) env GOARCH)
 CGO_ENABLED ?= 0
 
-# Build flags - Update these if your version variables are in main package, not cmd
-LDFLAGS := -s -w
-ifneq ($(VERSION),)
-	LDFLAGS += -X github.com/vilayat-ali/gvm/internal.version=$(VERSION)
-endif
-ifneq ($(GIT_COMMIT),)
-	LDFLAGS += -X github.com/vilayat-ali/gvm/internal.commit=$(GIT_COMMIT)
-endif
-ifneq ($(BUILD_TIME),)
-	LDFLAGS += -X github.com/vilayat-ali/gvm/internal.buildTime=$(BUILD_TIME)
-endif
+BIN_DIR      := bin
+DIST_DIR     := dist
+RELEASE_DIR  := $(DIST_DIR)/releases
+PLATFORMS    := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 
-# Directories
-BIN_DIR := bin
-DIST_DIR := dist
+LDFLAGS := -s -w \
+	-X '$(MODULE)/internal.AppVersion=$(VERSION)' \
+	-X '$(MODULE)/internal.GitCommit=$(GIT_COMMIT)' \
+	-X '$(MODULE)/internal.BuildTime=$(BUILD_TIME)'
 
-# Ensure directories exist
-$(shell mkdir -p $(BIN_DIR) $(DIST_DIR) $(DIST_DIR)/releases)
+GOBUILD := CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(LDFLAGS)"
 
-# Default target
 all: build
 
-# Build the application for current platform - Build from root directory
-build:
-	@echo "Building $(APP_NAME) for $(GOOS)/$(GOARCH)..."
-	CGO_ENABLED=$(CGO_ENABLED) $(GO) build \
-		-ldflags "$(LDFLAGS)" \
-		-o $(BIN_DIR)/$(APP_NAME) \
-		.
-	@chmod +x $(BIN_DIR)/$(APP_NAME)
-	@echo "Build complete: $(BIN_DIR)/$(APP_NAME)"
+$(BIN_DIR) $(DIST_DIR) $(RELEASE_DIR):
+	@mkdir -p $@
 
-# Quick build and run
+verify-go:
+	@have=$$($(GO) env GOVERSION | sed 's/^go//'); \
+	want=$(GO_VERSION); \
+	printf 'go.mod requires go %s, toolchain provides go %s\n' "$$want" "$$have"; \
+	lowest=$$(printf '%s\n%s\n' "$$want" "$$have" | sort -V | head -n 1); \
+	if [ "$$lowest" != "$$want" ] && [ "$$want" != "$$have" ]; then \
+		echo "error: your Go toolchain is older than go.mod requires"; exit 1; \
+	fi
+
+build: | $(BIN_DIR)
+	@echo "Building $(APP_NAME) $(VERSION) for $(GOOS)/$(GOARCH)..."
+	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GOBUILD) -o $(BIN_DIR)/$(APP_NAME) .
+	@echo "Built $(BIN_DIR)/$(APP_NAME)"
+
 run: build
-	@echo "Running $(APP_NAME)..."
-	./$(BIN_DIR)/$(APP_NAME)
+	@./$(BIN_DIR)/$(APP_NAME)
 
-# Build for all platforms
-build-all: build-linux build-darwin build-windows
+build-all: | $(DIST_DIR)
+	@for platform in $(PLATFORMS); do \
+		os=$${platform%/*}; arch=$${platform#*/}; \
+		echo "Building $$os/$$arch..."; \
+		GOOS=$$os GOARCH=$$arch $(GOBUILD) -o $(DIST_DIR)/$(APP_NAME)-$$os-$$arch . || exit 1; \
+	done
+	@echo "Binaries in $(DIST_DIR)/"
 
-# Build for Linux - Build from root directory
 build-linux:
-	@echo "Building for Linux..."
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) build \
-		-ldflags "$(LDFLAGS)" \
-		-o $(DIST_DIR)/$(APP_NAME)-linux-amd64 \
-		.
-	@chmod +x $(DIST_DIR)/$(APP_NAME)-linux-amd64
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 $(GO) build \
-		-ldflags "$(LDFLAGS)" \
-		-o $(DIST_DIR)/$(APP_NAME)-linux-arm64 \
-		.
-	@chmod +x $(DIST_DIR)/$(APP_NAME)-linux-arm64
-	@echo "Linux builds complete in $(DIST_DIR)/"
+	@$(MAKE) --no-print-directory build GOOS=linux GOARCH=amd64
+	@$(MAKE) --no-print-directory build GOOS=linux GOARCH=arm64
 
-# Build for macOS - Build from root directory
 build-darwin:
-	@echo "Building for macOS..."
-	GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 $(GO) build \
-		-ldflags "$(LDFLAGS)" \
-		-o $(DIST_DIR)/$(APP_NAME)-darwin-amd64 \
-		.
-	@chmod +x $(DIST_DIR)/$(APP_NAME)-darwin-amd64
-	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 $(GO) build \
-		-ldflags "$(LDFLAGS)" \
-		-o $(DIST_DIR)/$(APP_NAME)-darwin-arm64 \
-		.
-	@chmod +x $(DIST_DIR)/$(APP_NAME)-darwin-arm64
-	@echo "macOS builds complete in $(DIST_DIR)/"
+	@$(MAKE) --no-print-directory build GOOS=darwin GOARCH=amd64
+	@$(MAKE) --no-print-directory build GOOS=darwin GOARCH=arm64
 
-# Build for Windows - Build from root directory
-build-windows:
-	@echo "Building for Windows..."
-	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 $(GO) build \
-		-ldflags "$(LDFLAGS)" \
-		-o $(DIST_DIR)/$(APP_NAME)-windows-amd64.exe \
-		.
-	@echo "Windows build complete in $(DIST_DIR)/"
-
-# Install to GOPATH/bin or system bin directory
+# Installs into the user's own bin directory. gvm never needs root.
 install: build
-	@echo "Installing $(APP_NAME)..."
-	@if [ -d "$(shell go env GOPATH 2>/dev/null)/bin" ]; then \
-		INSTALL_DIR="$(shell go env GOPATH)/bin"; \
-		cp $(BIN_DIR)/$(APP_NAME) $$INSTALL_DIR/$(APP_NAME); \
-		chmod +x $$INSTALL_DIR/$(APP_NAME); \
-		echo "Installed to $$INSTALL_DIR/$(APP_NAME)"; \
-	elif [ -d "/usr/local/bin" ]; then \
-		sudo cp $(BIN_DIR)/$(APP_NAME) /usr/local/bin/$(APP_NAME); \
-		sudo chmod +x /usr/local/bin/$(APP_NAME); \
-		echo "Installed to /usr/local/bin/$(APP_NAME)"; \
-	elif [ -d "$HOME/.local/bin" ]; then \
-		cp $(BIN_DIR)/$(APP_NAME) $$HOME/.local/bin/$(APP_NAME); \
-		chmod +x $$HOME/.local/bin/$(APP_NAME); \
-		echo "Installed to $$HOME/.local/bin/$(APP_NAME)"; \
-	else \
-		echo "Please add execute permissions manually:"; \
-		echo "  chmod +x $(BIN_DIR)/$(APP_NAME)"; \
-		echo "  sudo mv $(BIN_DIR)/$(APP_NAME) /usr/local/bin/"; \
-	fi
+	@dir="$${PREFIX:-$$HOME/.local/bin}"; \
+	mkdir -p "$$dir"; \
+	install -m 0755 $(BIN_DIR)/$(APP_NAME) "$$dir/$(APP_NAME)"; \
+	echo "Installed $$dir/$(APP_NAME)"; \
+	case ":$$PATH:" in *":$$dir:"*) ;; *) echo "Note: $$dir is not on your PATH";; esac
 
-# Uninstall from system
 uninstall:
-	@echo "Uninstalling $(APP_NAME)..."
-	@if [ -f "$(shell go env GOPATH 2>/dev/null)/bin/$(APP_NAME)" ]; then \
-		rm -f "$(shell go env GOPATH)/bin/$(APP_NAME)"; \
-		echo "Removed from $(shell go env GOPATH)/bin/$(APP_NAME)"; \
-	elif [ -f "/usr/local/bin/$(APP_NAME)" ]; then \
-		sudo rm -f /usr/local/bin/$(APP_NAME); \
-		echo "Removed from /usr/local/bin/$(APP_NAME)"; \
-	elif [ -f "$$HOME/.local/bin/$(APP_NAME)" ]; then \
-		rm -f "$$HOME/.local/bin/$(APP_NAME)"; \
-		echo "Removed from $$HOME/.local/bin/$(APP_NAME)"; \
+	@dir="$${PREFIX:-$$HOME/.local/bin}"; \
+	if [ -f "$$dir/$(APP_NAME)" ]; then \
+		rm -f "$$dir/$(APP_NAME)"; echo "Removed $$dir/$(APP_NAME)"; \
 	else \
-		echo "$(APP_NAME) not found in common locations"; \
+		echo "$(APP_NAME) not found in $$dir"; \
 	fi
 
-# Create release archives
-release: build-all
-	@echo "Creating release archives..."
-	@mkdir -p $(DIST_DIR)/releases
-	@cd $(DIST_DIR) && \
-		tar -czf releases/$(APP_NAME)-linux-amd64-$(VERSION).tar.gz $(APP_NAME)-linux-amd64 && \
-		tar -czf releases/$(APP_NAME)-linux-arm64-$(VERSION).tar.gz $(APP_NAME)-linux-arm64 && \
-		zip -q releases/$(APP_NAME)-darwin-amd64-$(VERSION).zip $(APP_NAME)-darwin-amd64 && \
-		zip -q releases/$(APP_NAME)-darwin-arm64-$(VERSION).zip $(APP_NAME)-darwin-arm64 && \
-		zip -q releases/$(APP_NAME)-windows-amd64-$(VERSION).zip $(APP_NAME)-windows-amd64.exe
-	@echo "Release archives created in $(DIST_DIR)/releases/"
-	@echo "SHA256 checksums:"
-	@cd $(DIST_DIR)/releases && sha256sum * > SHA256SUMS.txt
-	@cat $(DIST_DIR)/releases/SHA256SUMS.txt
+# Archive names match exactly what scripts/install.sh downloads.
+release: build-all | $(RELEASE_DIR)
+	@rm -f $(RELEASE_DIR)/*
+	@for platform in $(PLATFORMS); do \
+		os=$${platform%/*}; arch=$${platform#*/}; \
+		tar -czf $(RELEASE_DIR)/$(APP_NAME)-$$os-$$arch-$(VERSION).tar.gz \
+			-C $(DIST_DIR) $(APP_NAME)-$$os-$$arch \
+			--transform 's|$(APP_NAME)-.*|$(APP_NAME)|' || exit 1; \
+	done
+	@cd $(RELEASE_DIR) && sha256sum *.tar.gz > SHA256SUMS.txt
+	@echo "Release artifacts in $(RELEASE_DIR)/"
+	@cat $(RELEASE_DIR)/SHA256SUMS.txt
 
-# Run tests
 test:
-	@echo "Running tests..."
-	$(GO) test -v ./...
+	$(GO) test ./...
 
-# Run tests with coverage
+test-race:
+	$(GO) test -race ./...
+
 test-coverage:
-	@echo "Running tests with coverage..."
-	$(GO) test -v -coverprofile=coverage.out ./...
-	$(GO) tool cover -func=coverage.out
+	$(GO) test -coverprofile=coverage.out ./...
+	$(GO) tool cover -func=coverage.out | tail -n 1
 	$(GO) tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report generated: coverage.html"
 
-# Format Go code
 fmt:
-	@echo "Formatting Go code..."
 	$(GO) fmt ./...
 
-# Lint Go code
+fmt-check:
+	@files=$$(gofmt -l . 2>/dev/null); \
+	if [ -n "$$files" ]; then echo "Not gofmt'd:"; echo "$$files"; exit 1; fi; \
+	echo "All files are formatted"
+
+vet:
+	$(GO) vet ./...
+
 lint:
-	@echo "Linting Go code..."
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		if golangci-lint --version 2>&1 | grep -q "version 1.59"; then \
-			echo "Warning: golangci-lint version may have issues with Go 1.25"; \
-			echo "Skipping golangci-lint, running go vet instead..."; \
-			$(GO) vet ./...; \
-		else \
-			golangci-lint run || (echo "Linting had issues. Running go vet as fallback..."; $(GO) vet ./...); \
-		fi; \
+		golangci-lint run ./...; \
 	else \
-		echo "golangci-lint not found, running go vet..."; \
+		echo "golangci-lint not installed; running go vet instead"; \
 		$(GO) vet ./...; \
 	fi
 
-# Vet Go code
-vet:
-	@echo "Running go vet..."
-	$(GO) vet ./...
+check: verify-go fmt-check vet test
 
-# Run all code quality checks
-check: fmt vet test
+deps:
+	$(GO) mod tidy
+	$(GO) mod verify
 
-# Clean build artifacts
+docs: build
+	@mkdir -p docs
+	@./$(BIN_DIR)/$(APP_NAME) --help > docs/usage.txt
+	@for sub in configure list download use remove doctor env; do \
+		./$(BIN_DIR)/$(APP_NAME) $$sub --help > docs/$$sub.txt 2>/dev/null || true; \
+	done
+	@echo "Documentation in docs/"
+
 clean:
-	@echo "Cleaning build artifacts..."
-	rm -rf $(BIN_DIR) $(DIST_DIR) coverage.out coverage.html
+	rm -rf $(BIN_DIR) $(DIST_DIR) docs coverage.out coverage.html
 	$(GO) clean
 
-# Generate Cobra CLI documentation
-docs: build
-	@echo "Generating documentation..."
-	@mkdir -p docs
-	./$(BIN_DIR)/$(APP_NAME) --help > docs/usage.txt
-	@for cmd in download list use; do \
-		./$(BIN_DIR)/$(APP_NAME) $$cmd --help 2>/dev/null > docs/$$cmd.txt || true; \
-	done
-	@echo "Documentation generated in docs/"
+# Removes gvm's own data. Only ever touches gvm-owned directories.
+clean-setup:
+	@root="$${GVM_ROOT:-$${XDG_DATA_HOME:-$$HOME/.local/share}/gvm}"; \
+	config="$${XDG_CONFIG_HOME:-$$HOME/.config}/gvm"; \
+	echo "This will delete:"; echo "  $$root"; echo "  $$config"; \
+	printf 'Continue? [y/N] '; read -r reply; \
+	case "$$reply" in [yY]*) rm -rf "$$root" "$$config"; echo "Removed";; *) echo "Aborted";; esac
 
-# Update dependencies
-deps:
-	@echo "Updating dependencies..."
-	$(GO) mod tidy
-	$(GO) mod download
-
-# Development mode (watch and rebuild)
-dev:
-	@echo "Starting development mode..."
-	@if command -v air >/dev/null 2>&1; then \
-		air; \
-	else \
-		echo "Installing air for live reload..."; \
-		$(GO) install github.com/cosmtrek/air@latest; \
-		$$(go env GOPATH)/bin/air; \
-	fi
-
-setup-bin-perm:
-	sudo chown root:root ./bin/gvm
-	sudo chmod u+s ./bin/gvm
-
-# Remove cli config setup
-clean-setup: clean
-	sudo rm -rf ~/.config/gvm
-	sudo rm -rf /usr/local/gvm
-
-# Show help
 help:
-	@echo "GVM - Go Version Manager Makefile"
+	@echo "gvm $(VERSION)  (go $(GO_VERSION), $(GOOS)/$(GOARCH))"
 	@echo ""
-	@echo "Available targets:"
-	@echo "  build          - Build for current platform"
-	@echo "  run            - Build and run"
-	@echo "  build-all      - Build for all platforms (Linux, macOS, Windows)"
-	@echo "  build-linux    - Build for Linux (amd64, arm64)"
-	@echo "  build-darwin   - Build for macOS (amd64, arm64)"
-	@echo "  build-windows  - Build for Windows (amd64)"
-	@echo "  install        - Install to system"
-	@echo "  uninstall      - Uninstall from system"
-	@echo "  release        - Create release archives with checksums"
-	@echo "  test           - Run tests"
-	@echo "  test-coverage  - Run tests with coverage report"
-	@echo "  fmt            - Format Go code"
-	@echo "  lint           - Lint Go code"
-	@echo "  vet            - Vet Go code"
-	@echo "  check          - Run all code quality checks"
-	@echo "  clean          - Clean build artifacts"
-	@echo "  docs           - Generate CLI documentation"
-	@echo "  deps           - Update dependencies"
-	@echo "  dev            - Start development mode with live reload"
-	@echo "  help           - Show this help message"
+	@echo "  build           Build for the current platform"
+	@echo "  build-all       Build for $(PLATFORMS)"
+	@echo "  install         Install to \$$PREFIX (default ~/.local/bin)"
+	@echo "  uninstall       Remove the installed binary"
+	@echo "  release         Build all platforms and write SHA256SUMS.txt"
+	@echo "  test            Run tests"
+	@echo "  test-race       Run tests with the race detector"
+	@echo "  test-coverage   Run tests and write coverage.html"
+	@echo "  fmt / fmt-check Format code / fail if unformatted"
+	@echo "  vet / lint      Static analysis"
+	@echo "  check           verify-go + fmt-check + vet + test"
+	@echo "  verify-go       Check the toolchain matches go.mod"
+	@echo "  deps            go mod tidy && go mod verify"
+	@echo "  clean           Remove build artifacts"
+	@echo "  clean-setup     Remove gvm's installed toolchains and config"
 	@echo ""
-	@echo "Environment variables:"
-	@echo "  GOOS      - Target OS (default: current)"
-	@echo "  GOARCH    - Target architecture (default: current)"
-	@echo "  CGO_ENABLED - Enable CGO (default: 0)"
-	@echo ""
-	@echo "Examples:"
-	@echo "  make build                    # Build for current platform"
-	@echo "  make run                      # Build and run"
-	@echo "  make install                  # Install to system"
-	@echo "  make release                  # Create release packages"
+	@echo "The required Go version lives in go.mod (currently $(GO_VERSION))."
 
-github-release: clean build
-	tar -czvf gvm-linux-x86.tar.gz ./bin 
-
-# Default target
 .DEFAULT_GOAL := help

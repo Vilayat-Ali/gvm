@@ -2,13 +2,13 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue?style=for-the-badge)
-![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?style=for-the-badge&logo=go)
+![Version](https://img.shields.io/badge/version-3.0.0-blue?style=for-the-badge)
+![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?style=for-the-badge&logo=go)
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 
-**A modern, lightning-fast CLI tool to manage multiple Go versions without breaking a sweat.**
+**Install and switch between Go toolchains in milliseconds — without root, and without touching a single system file.**
 
-[Features](#-features) • [Installation](#-installation) • [Quick Start](#-quick-start) • [Commands](#-commands) • [Configuration](#-configuration) • [FAQ](#-faq)
+[Install](#-installation) • [Quick start](#-quick-start) • [Commands](#-commands) • [How it works](#-how-it-works) • [Safety](#-safety) • [FAQ](#-faq)
 
 </div>
 
@@ -16,283 +16,240 @@
 
 ## ✨ Features
 
-- 🚀 **Blazing Fast** - Minimal overhead, maximum speed
-- 🔒 **Secure Downloads** - SHA256 checksum verification for every download
-- 🎯 **Cross-Platform** - Works on Linux, macOS, and Windows
-- 💻 **Modern CLI** - Beautiful, colorful output that developers love
-- 📦 **Zero Dependencies** - Just download and run, no extra setup needed
-- 🔄 **Seamless Switching** - Switch between Go versions instantly
+- **No root required.** Everything lives under `~/.local/share/gvm`. gvm refuses to run under `sudo` and never asks for elevation.
+- **Never touches system files.** `/usr/local/go`, `/usr`, `/etc` and friends are on a hard-coded deny list. Your distro's Go stays exactly where it is.
+- **Instant switching.** Changing versions moves one symlink — about 10 ms, no re-extraction.
+- **Verified downloads.** Every archive is checked against the SHA-256 published by go.dev, hashed while it streams to disk.
+- **Atomic and crash-safe.** Downloads, installs, config writes and version switches all land via `rename(2)`. An interrupted command never leaves you without a working Go.
+- **Hardened extraction.** Path traversal, absolute paths, escaping symlinks and device nodes are all rejected.
+- **`gvm doctor`.** Tells you exactly what is wrong with your PATH and how to fix it.
 
 ---
 
 ## 🚀 Installation
 
-### Using the Install Script (Recommended)
+### Install script
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Vilayat-Ali/gvm/main/scripts/install.sh | bash
 ```
 
-### From Source
+It verifies the release checksum, installs to `~/.local/bin`, and adds gvm to your shell profile. It refuses to run as root.
+
+### From source
 
 ```bash
 git clone https://github.com/Vilayat-Ali/gvm.git
 cd gvm
-make build
-sudo make install
+make install          # builds and installs to ~/.local/bin
 ```
 
-### Manual Installation
+### Manual
 
-1. Download the latest release for your platform from the [Releases page](https://github.com/Vilayat-Ali/gvm/releases)
-2. Extract the binary
-3. Move it to a directory in your PATH
+Download the archive for your platform from the [Releases page](https://github.com/Vilayat-Ali/gvm/releases), then:
 
 ```bash
-# Example for Linux AMD64
-sudo mv gvm-linux-amd64 /usr/local/bin/gvm
-sudo chmod +x /usr/local/bin/gvm
+tar -xzf gvm-linux-amd64-<version>.tar.gz
+install -m 0755 gvm ~/.local/bin/gvm
 ```
 
-> **Note:** After installation, restart your terminal or run `source ~/.bashrc` (or your shell's config file).
+Add both directories to your PATH:
+
+```bash
+export PATH="$HOME/.local/share/gvm/bin:$HOME/.local/bin:$PATH"
+```
 
 ---
 
-## 🎯 Quick Start
+## 🎯 Quick start
 
 ```bash
-# First-time setup
-gvm configure
+gvm configure       # create the gvm directory and fetch the release catalog
+gvm use latest      # install and activate the newest stable Go
+gvm doctor          # confirm your shell is wired up correctly
 
-# See available versions
-gvm list
-
-# Download a version
-gvm download 1.22.0
-
-# Start using it!
-gvm use 1.22.0
-
-# Verify it's working
 go version
-# Output: go version go1.22.0 linux/amd64
+# go version go1.27.0 linux/amd64
+```
+
+Switching afterwards is instant:
+
+```bash
+gvm use 1.24        # resolves to the newest 1.24.x
+gvm use 1.23.4
 ```
 
 ---
 
 ## 📚 Commands
 
-### `gvm configure`
+| Command | What it does |
+|---|---|
+| `gvm configure` | Create the gvm directory and fetch the version catalog |
+| `gvm list` | Show installed versions (`*` marks the active one) |
+| `gvm list --remote` | Show versions available to download |
+| `gvm list --current` | Print only the active version |
+| `gvm list update` | Refresh the catalog from go.dev |
+| `gvm download <version>` | Download and unpack a version without activating it |
+| `gvm use <version>` | Activate a version, installing it first if needed |
+| `gvm remove <version>` | Remove an installed version (`--purge` also drops the cached archive) |
+| `gvm doctor` | Diagnose PATH, shadowing and `GOROOT` problems |
+| `gvm env` | Print the shell line that puts gvm on your PATH |
 
-Initialize gvm for first-time use. Creates the necessary config files and directories.
+### Version arguments
 
-```bash
-gvm configure
+All commands accept the same forms:
+
+```
+1.24.2    v1.24.2    go1.24.2      exact version
+1.24                                newest 1.24.x
+1.25rc1                             release candidates and betas
+latest                              newest stable release
 ```
 
-**What it does:**
-- Creates config at `~/.config/gvm/config.json`
-- Sets up version storage at `/usr/local/gvm/go-versions/`
-- Fetches the latest available Go versions
+### Examples
 
----
+```console
+$ gvm list
 
-### `gvm list`
+  Installed
+  ---------
+  * 1.27.0
+    1.24.13
+    1.23.12
 
-Browse available and installed Go versions.
-
-```bash
-gvm list              # Show available versions
-gvm list -d           # Show downloaded/installed versions
-gvm list -c           # Show current active version
-gvm list update       # Refresh the version list
+  * = active   |   `gvm list --remote` shows downloadable versions
 ```
 
-**Output example:**
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          📋 AVAILABLE GO VERSIONS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```console
+$ gvm doctor
 
-  go1.22.0 ✨ LTS
-  go1.21.5 •  AVAILABLE
-  go1.21.4 •  AVAILABLE
-  go1.21.3 •  AVAILABLE
+  Environment
+  -----------
+    root         /home/you/.local/share/gvm
+    shims        /home/you/.local/share/gvm/bin
+    installed    3 version(s)
+    active       1.27.0
+    go on PATH   /home/you/.local/share/gvm/bin/go (1.27.0)
 
-Quick actions:
-  gvm download go1.22.0 → grab the LTS version
-```
-
----
-
-### `gvm download`
-
-Download a Go version to your local storage.
-
-```bash
-gvm download 1.22.0
-```
-
-**Features:**
-- Shows download progress
-- Verifies SHA256 checksum after download
-- Caches for instant switching later
-
-**Output example:**
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          📥 DOWNLOADING GO 1.22.0
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  Platform: linux/amd64
-  downloading... 100%|████████████| 102MB
-  ✓ Checksum verified
-
-✅ Download complete!
-  📍 Location: /usr/local/gvm/go-versions/go1.22.0.tar.gz
-
-Next: Run 'gvm use 1.22.0' to start using it!
+  everything looks good
 ```
 
 ---
 
-### `gvm use`
+## 🔍 How it works
 
-Activate a Go version. If not downloaded, gvm will grab it for you!
-
-```bash
-gvm use 1.22.0
+```
+~/.local/share/gvm/
+├── bin/
+│   ├── go       -> ../current/bin/go
+│   └── gofmt    -> ../current/bin/gofmt
+├── cache/       downloaded, checksum-verified archives
+├── current      -> versions/go1.27.0
+└── versions/
+    ├── go1.27.0/
+    └── go1.24.13/
 ```
 
-**Output example:**
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          ⚙️  SWITCHING TO GO 1.22.0
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`~/.local/share/gvm/bin` is the only thing on your PATH. Switching versions repoints `current` with an atomic rename, so `go` resolves to the new toolchain immediately — no files are copied, deleted or re-extracted.
 
-  Removing old installation...
-  Extracting new version...
+Installing a version stages the extraction in a temporary directory, runs `go version` to prove the toolchain works, and only then renames it into place. If anything fails, the previous state is untouched.
 
-✅ Switched to Go 1.22.0!
+The release catalog and every checksum come from the official `https://go.dev/dl/?mode=json` index.
 
-🎉 Ready to code! Run 'go version' to verify
-```
-
-> **Note:** Make sure `/usr/local/go/bin` is in your PATH. If not, gvm will remind you to add it!
+Override the locations with `GVM_ROOT` and `XDG_CONFIG_HOME` if you need to; `GVM_API_URL` and `GVM_DOWNLOAD_URL` let you point at a mirror.
 
 ---
 
-### `gvm delete`
+## 🛡 Safety
 
-Remove a downloaded Go version.
+gvm is designed so that a bug, a hostile archive or a mistyped argument cannot damage your system:
 
-```bash
-gvm delete 1.21.0
-```
+- **Deny list.** `/`, `/usr`, `/usr/local`, `/usr/local/go`, `/etc`, `/var`, `/home`, your home directory itself and ~25 others can never be used as the gvm root or be deleted.
+- **Confined deletes.** Every removal is checked to be inside the gvm root first, and symlinks are unlinked rather than followed — so a stray `current` link can never delete what it points at.
+- **Strict version parsing.** Version arguments must match `go<major>.<minor>[.<patch>][rc|beta|alpha<n>]`, so nothing that reaches the filesystem can contain `..`, `/` or shell metacharacters.
+- **Extraction guards.** Entries with absolute paths, `..` components, symlinks pointing outside the destination, device nodes and FIFOs are skipped; oversized archives are rejected.
+- **No `tar` subprocess, no shell.** Archives are unpacked in-process with `archive/tar`.
+- **No setuid, no sudo.** Running `sudo gvm` is refused outright, because it would leave root-owned files in your home directory.
+- **Refuses to remove the active version** until you switch away from it.
 
----
-
-## ⚙️ Configuration
-
-### Config Location
-- **Config file:** `~/.config/gvm/config.json`
-- **Version storage:** `/usr/local/gvm/go-versions/`
-
-### Manual PATH Setup
-
-Add this to your shell config (`~/.bashrc`, `~/.zshrc`, etc.):
-
-```bash
-# Add Go to PATH
-export PATH=$PATH:/usr/local/go/bin
-```
+`gvm` does not modify `/usr/local/go`. If a system Go is shadowing gvm on your PATH, `gvm doctor` reports it and tells you how to reorder your PATH — it will not delete it for you.
 
 ---
 
 ## 🔧 Development
 
-### Building from Source
-
 ```bash
-# Clone the repo
-git clone https://github.com/Vilayat-Ali/gvm.git
-cd gvm
-
-# Build
-make build
-
-# Run tests
-make test
-
-# Format code
-make fmt
-
-# Lint code
-make lint
+make check          # verify-go + fmt-check + vet + test
+make test-race      # tests under the race detector
+make test-coverage  # writes coverage.html
+make build          # build for the current platform
+make release        # cross-compile and write SHA256SUMS.txt
+make help           # all targets
 ```
 
-### Available Make Targets
+### Changing the Go version used to build gvm
 
-| Target | Description |
-|--------|-------------|
-| `make build` | Build for current platform |
-| `make build-all` | Build for Linux, macOS, Windows |
-| `make install` | Install to system |
-| `make test` | Run tests |
-| `make fmt` | Format code |
-| `make lint` | Lint code |
-| `make clean` | Remove build artifacts |
+The required toolchain is declared **once**, in `go.mod`:
+
+```
+go 1.25.5
+```
+
+The Makefile reads it (`make verify-go` checks your local toolchain against it) and CI installs it via `go-version-file: go.mod`. Edit `go.mod`, run `make deps`, and everything follows.
 
 ---
 
 ## ❓ FAQ
 
-### Q: Why do I need to configure PATH?
+**Do I need sudo?**
+No. gvm installs into your home directory. Running it with `sudo` is refused unless you set `GVM_ALLOW_ROOT=1`.
 
-GVM installs Go versions to `/usr/local/go`, but your shell needs to know where to find it. Adding `/usr/local/go/bin` to your PATH tells your terminal to use the Go installation managed by gvm.
+**Will it delete my existing Go installation?**
+No. gvm never writes to or deletes anything outside its own root directory. If your distro's Go at `/usr/local/go` comes first on your PATH, `gvm doctor` will point that out so you can reorder it.
 
-### Q: Can I have multiple versions installed?
+**How fast is switching?**
+About 10 ms for an already-installed version — it is a single symlink rename.
 
-Yes! Download as many versions as you want. Use `gvm list -d` to see all downloaded versions, and `gvm use <version>` to switch between them.
+**Are downloads verified?**
+Yes, against the SHA-256 published by go.dev. The hash is computed while the file streams to disk, and a mismatch deletes the partial download.
 
-### Q: Does gvm verify downloads?
+**Which platforms are supported?**
+Linux and macOS, on amd64 and arm64.
 
-Absolutely! Every download is verified with SHA256 checksums fetched from the official Go servers at go.dev.
+**Where does everything live?**
+Toolchains in `~/.local/share/gvm` (override with `GVM_ROOT`), config in `~/.config/gvm/config.json`.
 
-### Q: Can I use gvm without root/sudo?
+**How do I remove gvm completely?**
 
-Currently, gvm requires root access to install Go versions to `/usr/local/`. Future versions may support user-level installations.
+```bash
+make clean-setup                      # or:
+rm -rf ~/.local/share/gvm ~/.config/gvm ~/.local/bin/gvm
+```
 
-### Q: What Go versions are supported?
-
-gvm supports all Go versions from 1.17 onwards, including release candidates (rc) and beta versions.
+Then remove the `# added by gvm installer` line from your shell profile.
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Here's how you can help:
-
-1. **Fork** the repository
-2. **Clone** your fork: `git clone https://github.com/your-username/gvm.git`
-3. **Create** a feature branch: `git checkout -b feature/amazing-feature`
-4. **Make** your changes and test: `make test`
-5. **Commit** your changes: `git commit -m 'Add amazing feature'`
-6. **Push** to your fork: `git push origin feature/amazing-feature`
-7. Open a **Pull Request** on GitHub
+1. Fork and clone the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes and run `make check`
+4. Commit, push, and open a Pull Request
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
 
 ---
 
 ## 🙏 Acknowledgments
 
 - Inspired by [nvm](https://github.com/nvm-sh/nvm) and [fnm](https://github.com/Schniz/fnm)
-- Powered by [Cobra](https://github.com/spf13/cobra) CLI framework
+- Powered by [Cobra](https://github.com/spf13/cobra)
 - Go downloads served by [go.dev](https://go.dev/)
 
 ---
