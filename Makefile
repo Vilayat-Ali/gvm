@@ -1,5 +1,5 @@
 # GVM - Go Version Manager
-# Copyright © 2025 Syed Vilayat Ali Rizvi
+# Copyright © 2026 Syed Vilayat Ali Rizvi
 
 .PHONY: all build run build-all build-linux build-darwin install uninstall \
         release test test-race test-coverage fmt fmt-check lint vet check \
